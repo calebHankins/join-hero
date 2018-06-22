@@ -1,9 +1,49 @@
 # Binaries for programs and plugins
+*.bson
+*.dump
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
+*.log
+*.out
+*.pcap
+*.playback
+*.pyc
+*.swp
+*.swp
+*.tape
+*.temp
+*.zip
+\debug
+*.bk
+\Cheap Hack
+*.csv
+*.txt
+\datamodeler
+\exp
+\scratch
+\bin
+\logs
+join_us.sql
+
+
+
+*temp*
+
+
+vendor/pkg
+
+.gopath
+.godeps
+.idea
+.vscode
+
+tags
+node_modules
+
+lorem_ipsum_copy.txt
 
 # Test binary, build with `go test -c`
 *.test
