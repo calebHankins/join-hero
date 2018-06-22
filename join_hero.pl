@@ -9,7 +9,8 @@
 # Date:   2018-03-27
 #
 # Purpose: Transform DDL that describes keys (foreign, primary and unique)
-# into partnerApps join metadata that can be ingested by various and sundry partnerApps
+# into join metadata that can be ingested by various and sundry downstream processes
+# to link relational tables and views
 #
 ############################################################################################
 # MODIFICATION HISTORY
@@ -78,7 +79,7 @@ my ($pk, $fk) = getKeyComponents($inputFileContents);
 # Use our component list to construct some oracle merge statements
 my $outputFileContents = getOutputSQL($pk, $fk);
 
-# Create file containing SQL statements that can be used to update partnerApps join metadata
+# Create file containing SQL statements that can be used to update join metadata
 createExportFile($outputFileContents, $outputFilepath);
 
 exit;
@@ -94,8 +95,8 @@ sub sanityCheckOptions {
   if ('CMP_DM' ~~ @supportedMarts) { push(@supportedMarts, 'CMP'); }       # Add the short name if long is present
   @supportedMarts = getUniqArray(@supportedMarts);
 
-  print("$subName Supported partnerApp types: [" . join(',', @supportedTypes) . "]\n");
-  print("$subName Supported mart types: [" . join(',', @supportedMarts) . "]\n");
+  print("$subName Supported target application types: [" . join(',', @supportedTypes) . "]\n");
+  print("$subName Supported mart prefixes: [" . join(',', @supportedMarts) . "]\n");
   print("$subName Processing '$inputFilepath', wish me luck!\n");
 
   return;
@@ -600,7 +601,7 @@ join_hero.pl
 
 =head1 SYNOPSIS
 
-join_hero.pl - Transform DDL that describes keys (foreign, primary and unique) into partnerApps join metadata that can be ingested by various and sundry partnerApps
+join_hero.pl - Transform DDL that describes keys (foreign, primary and unique) into join metadata that can be ingested by various and sundry downstream processes to link relational tables and views
 
  Options:
   'i|file|inputFilepath=s'              DDL File input file with key info [required]
