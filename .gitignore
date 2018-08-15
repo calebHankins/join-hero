@@ -3,6 +3,7 @@
 *.dump
 *.exe
 *.exe~
+*.pl~
 *.dll
 *.so
 *.dylib
