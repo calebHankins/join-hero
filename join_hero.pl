@@ -110,7 +110,7 @@ sub getKeyComponents {
   my $subName = (caller(0))[3];
 
   # Describe what things look like
-  my $validOracleObjectCharacterClasses = q{a-zA-Z0-9_\-\$\@};                             # Oracle object
+  my $validOracleObjectCharacterClasses = q{"a-zA-Z0-9_\$\@};                              # Oracle object
   my $validOracleFieldListClasses       = $validOracleObjectCharacterClasses . q{\,\s};    # Field list
   my $captureOracleObject               = qq{([$validOracleObjectCharacterClasses]+)};     # Capture Oracle objects
   my $captureFieldList                  = qq{([$validOracleFieldListClasses]+)};           # Capture Oracle field lists
@@ -481,8 +481,14 @@ sub getTableName {
   my ($objectName) = @_;
   my $subName = (caller(0))[3];
 
-  # Uppercase
-  $objectName = uc($objectName);
+  # If we got a name wrapped in quotes, strip them off but preserve the casing
+  if ($objectName =~ /"/gm) {
+    $objectName = stripQuotes($objectName);
+  }
+  else {
+    # Else uppercase and move on
+    $objectName = uc($objectName);
+  }
 
   # If we got some variant of recipient, just return recipient
   $objectName =~ /(RECIPIENT)/gms;
@@ -502,6 +508,16 @@ sub getSchemaName {
 ##--------------------------------------------------------------------------
 
 ########################### todo, replace these subs below with partnerApps.pm if the cross platform issues are solved
+##--------------------------------------------------------------------------
+# Return a version of the supplied string, but without any double quote characters
+sub stripQuotes {
+  my ($string) = @_;
+  my $stripped = $string;
+  $stripped =~ s/"//gm;
+  return $stripped;
+} ## end sub stripQuotes
+##-------------------------------------------------------------------------
+
 ##--------------------------------------------------------------------------
 sub openAndLoadFile {
   my ($filename)   = @_;
