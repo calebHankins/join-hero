@@ -87,7 +87,8 @@ exit;
 ##---------------------------------------------------------------------------
 # Give script options the ol' sanity check
 sub sanityCheckOptions {
-  my $subName = (caller(0))[3];
+  my $subName  = (caller(0))[3];
+  my $errorCnt = 0;
 
   if ($types) { @supportedTypes = split(',', $types); }
   if ($marts) { @supportedMarts = split(',', $marts); }
@@ -98,6 +99,23 @@ sub sanityCheckOptions {
   print("$subName Supported target application types: [" . join(',', @supportedTypes) . "]\n");
   print("$subName Supported mart prefixes: [" . join(',', @supportedMarts) . "]\n");
   print("$subName Processing '$inputFilepath', wish me luck!\n");
+
+  $inputFilepath = glob($inputFilepath);
+  $errorCnt += checkRequiredParm($inputFilepath, 'inputFilepath');
+  $outputFilepath = glob($outputFilepath);
+  $errorCnt += checkRequiredParm($outputFilepath, 'outputFilepath');
+
+  # Check for errors before starting processing
+  if ($errorCnt > 0) {
+
+    # Print informational message to standard output
+    print(  "$subName There were ["
+          . $errorCnt
+          . "] error messages detected while sanity checking options. Script is halting.");
+
+    # Exit with a non-zero code and print usage
+    pod2usage(10);
+  } ## end if ($errorCnt > 0)
 
   return;
 } ## end sub sanityCheckOptions
@@ -258,9 +276,9 @@ sub getJoinSQL {
   my $subName   = (caller(0))[3];
   my $outputSQL = '';
 
-  print("$subName Processing:$fkComponents->{$fkKey}->{fkName}...\n");
+  if ($verbose) { print("$subName Processing:$fkComponents->{$fkKey}->{fkName}...\n"); }
   for my $type (@supportedTypes) {
-    print("$subName Processing:$fkComponents->{$fkKey}->{fkName} for type $type...\n");
+    if ($verbose) { print("$subName Processing:$fkComponents->{$fkKey}->{fkName} for type $type...\n"); }
     my $i          = 0;
     my $fromSchema = $fkComponents->{$fkKey}->{'fromSchema'};
     my $fromTable  = $fkComponents->{$fkKey}->{'fromTable'};
@@ -317,7 +335,9 @@ sub getJoinSQL {
         } ## end if ($deleteExisting)
 
         for my $fkToField (@{$fkComponents->{$fkKey}->{'toFields'}}) {
-          print("$subName Processing:$fkComponents->{$fkKey}->{fkName} for type $type and toField $fkToField...\n");
+          if ($verbose) {
+            print("$subName Processing:$fkComponents->{$fkKey}->{fkName} for type $type and toField $fkToField...\n");
+          }
           my $fkFromField  = @{$fkComponents->{$fkKey}->{'fromFields'}}[$i];    # Grab the matching from field
           my $fieldJoinOrd = $i + 1;
 
@@ -439,11 +459,15 @@ sub getJoinSQL {
 
       } ## end if ($toSchema eq $fromSchema)
       else {
-        print("$subName    Join was cross schema ($toSchema to $fromSchema) this is not supported, skipping\n");
+        if ($verbose) {
+          print("$subName    Join was cross schema ($toSchema to $fromSchema) this is not supported, skipping\n");
+        }
       }
     } ## end if ($toSchema or $fromSchema)
     else {
-      print("$subName    Join did not meet requirements or was missing needed information, skipping\n");
+      if ($verbose) {
+        print("$subName    Join did not meet requirements or was missing needed information, skipping\n");
+      }
     }
   } ## end for my $type (@supportedTypes)
 
@@ -465,7 +489,7 @@ sub getJoinCardinality {
       my @pkFields = sort($pkComponents->{$pkKey}->{'fields'});
       if (@joinFields ~~ @pkFields) {
         $cardinality = 'ONE';
-        print("$subName Setting cardinality = '$cardinality'\n");
+        if ($verbose) { print("$subName Setting cardinality = '$cardinality'\n"); }
         last;                  # If we found a key match, leave early
       }
     } ## end if ($join->{"${direction}Table"...})
@@ -559,14 +583,14 @@ sub createExportFile {
   eval { make_path($filepathParts->{'dirname'}) };
   print("$subName Could not make directory: $filepathParts->{'dirname'}: $@") if $@;
 
-  print("$subName Attempting creation of file [$exportFileFullName]");
+  print("$subName Attempting creation of file [$exportFileFullName]\n");
   open my $exportFile, q{>}, $exportFileFullName
-    or print("$subName Could not open file: $exportFileFullName: $!")
+    or print("$subName Could not open file: $exportFileFullName: $!\n")
     ;    # Open file, overwrite if exists, raise error if we run into trouble
   if (!$utfDisabled) { binmode($exportFile, ":encoding(UTF-8)") }
   print $exportFile $fileData;
   close($exportFile);
-  print("$subName Success!");
+  print("$subName Success!\n");
 
   return;
 } ## end sub createExportFile
@@ -600,6 +624,25 @@ sub getUniqArray {
   my @unique = grep { !$seen{$_}++ } @array;
   return @unique;
 } ## end sub getUniqArray
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
+# Make sure required parm is populated
+sub checkRequiredParm {
+  my ($requiredParmVal, $requiredParmValName, $errMsg) = @_;
+  my $parentName = (caller(1))[3];
+  $requiredParmValName //= "Missing a parameter that";
+  $errMsg              //= "$requiredParmValName is required.";
+  my $errorCnt = 0;
+
+  # Make sure value is populated
+  unless (defined($requiredParmVal) and length($requiredParmVal) > 0) {
+    print("$parentName $errMsg\n");
+    $errorCnt++;
+  }
+
+  return $errorCnt;
+} ## end sub checkRequiredParm
 ##--------------------------------------------------------------------------
 
 ##---------------------------------------------------------------------------
