@@ -110,7 +110,7 @@ sub getKeyComponents {
   my $subName = (caller(0))[3];
 
   # Describe what things look like
-  my $validOracleObjectCharacterClasses = q{"a-zA-Z0-9_\-\$\@};                            # Oracle object
+  my $validOracleObjectCharacterClasses = q{"a-zA-Z0-9_\$\@};                              # Oracle object
   my $validOracleFieldListClasses       = $validOracleObjectCharacterClasses . q{\,\s};    # Field list
   my $captureOracleObject               = qq{([$validOracleObjectCharacterClasses]+)};     # Capture Oracle objects
   my $captureFieldList                  = qq{([$validOracleFieldListClasses]+)};           # Capture Oracle field lists
