@@ -229,8 +229,16 @@ sub getKeyComponents {
         @{$fkComponents->{$fkName}->{'toFields'}}   = split(',', $toFieldList);
 
         # Munge and set schema names using the table prefix
-        $fkComponents->{$fkName}->{'fromSchema'} = getSchemaName($fkComponents->{$fkName}->{'fromTable'});
-        $fkComponents->{$fkName}->{'toSchema'}   = getSchemaName($fkComponents->{$fkName}->{'toTable'});
+        my $fromSchema = getSchemaName($fkComponents->{$fkName}->{'fromTable'});
+        my $toSchema   = getSchemaName($fkComponents->{$fkName}->{'toTable'});
+
+        # If we got one schema but not the other, set the empty one using the populated one
+        if ($fromSchema && !$toSchema)   { $toSchema   = $fromSchema; }
+        if ($toSchema   && !$fromSchema) { $fromSchema = $toSchema; }
+
+        # Save munged schema components
+        $fkComponents->{$fkName}->{'fromSchema'} = $fromSchema;
+        $fkComponents->{$fkName}->{'toSchema'}   = $toSchema;
       } ## end if ($toTable and $toFieldList...)
     } ## end if ($fk =~ /$fkComponentsRegEx/gms)
   } ## end for my $fk (@keyDDL)
@@ -279,196 +287,194 @@ sub getJoinSQL {
   if ($verbose) { print("$subName Processing:$fkComponents->{$fkKey}->{fkName}...\n"); }
   for my $type (@supportedTypes) {
     if ($verbose) { print("$subName Processing:$fkComponents->{$fkKey}->{fkName} for type $type...\n"); }
-    my $i          = 0;
-    my $fromSchema = $fkComponents->{$fkKey}->{'fromSchema'};
-    my $fromTable  = $fkComponents->{$fkKey}->{'fromTable'};
-    my $toSchema   = $fkComponents->{$fkKey}->{'toSchema'};
-    my $toTable    = $fkComponents->{$fkKey}->{'toTable'};
 
-    # Check that both schema are in our whitelist. If not, unset the value
-    if ($toSchema) {
-      if (!($toSchema ~~ @supportedMarts)) { $toSchema = undef; }
-    }
-    if ($fromSchema) {
-      if (!($fromSchema ~~ @supportedMarts)) { $fromSchema = undef; }
-    }
+    # App specific init
+    my $fromSchema;
+    my $fromTable;
+    my $toSchema;
+    my $toTable;
+    if ($type eq 'ADOBE') {    # Adobe joins are backwards, flip them
+      $fromSchema = $fkComponents->{$fkKey}->{'toSchema'};
+      $fromTable  = $fkComponents->{$fkKey}->{'toTable'};
+      $toSchema   = $fkComponents->{$fkKey}->{'fromSchema'};
+      $toTable    = $fkComponents->{$fkKey}->{'fromTable'};
+    } ## end if ($type eq 'ADOBE')
+    else {
+      $fromSchema = $fkComponents->{$fkKey}->{'fromSchema'};
+      $fromTable  = $fkComponents->{$fkKey}->{'fromTable'};
+      $toSchema   = $fkComponents->{$fkKey}->{'toSchema'};
+      $toTable    = $fkComponents->{$fkKey}->{'toTable'};
+    } ## end else [ if ($type eq 'ADOBE') ]
 
-    # If we have enough info to continue, do so. Else bail out of this join
-    if ($toSchema or $fromSchema) {
-
-      # If we got one schema but not the other, set the empty one using the populated one
-      if ($fromSchema && !$toSchema)   { $toSchema   = $fromSchema; }
-      if ($toSchema   && !$fromSchema) { $fromSchema = $toSchema; }
-
-      # Munge CMP prefix to CMP_DM schema
-      if ($fromSchema eq 'CMP') { $fromSchema = 'CMP_DM'; }
-      if ($toSchema eq 'CMP')   { $toSchema   = 'CMP_DM'; }
-
-      if ($toSchema eq $fromSchema) {
-
-        # App specific logic
-        if ($type eq 'ADOBE') {
-
-          # Adobe joins are backwards, flip them
-          ($toTable,  $fromTable)  = ($fromTable,  $toTable);
-          ($toSchema, $fromSchema) = ($fromSchema, $toSchema);
-
-        } ## end if ($type eq 'ADOBE')
-        else {    # If we're not Adobe and we see the RECIPIENT table, skip this one
-          if ($toTable eq 'RECIPIENT' || $fromTable eq 'RECIPIENT') { next; }
+    # Check for valid table names, leave early if invalid
+    if ($type ne 'ADOBE') {
+      if ($toTable eq 'RECIPIENT' || $fromTable eq 'RECIPIENT') {
+        if ($verbose) {
+          print("$subName Non-Adobe type ($type) targeting a RECIPIENT table ($toTable to $fromTable), skipping\n");
         }
+        next;
+      } ## end if ($toTable eq 'RECIPIENT'...)
+    } ## end if ($type ne 'ADOBE')
 
-        # Generate MTJ record(s)
-        if ($deleteExisting) {
-          my $deleteSQLMartTableJoin = qq{
-            DELETE FROM $martTableJoinTableName A
-            WHERE 
-              A.TYPE = '$type' AND
-              A.FROM_SCHEMA = '$fromSchema' AND
-              A.TO_SCHEMA = '$toSchema' AND
-              A.FROM_TABLE = '$fromTable' AND
-              A.TO_TABLE = '$toTable';\n};
+    # Validate schema, exit early if invalid
+    if (!defined($toSchema) || !defined($fromSchema)) {
+      if ($verbose) { print("$subName Missing 1 or more schema, skipping\n"); }
+      next;
+    }
+    elsif ($toSchema ne $fromSchema) {    # Exit early if the schema don't match, no cross mart joins
+      if ($verbose) {
+        print("$subName Cross schema ($toSchema to $fromSchema), skipping\n");
+      }
+      next;
+    } ## end elsif ($toSchema ne $fromSchema)
 
-          if ($verbose) { print("$subName Adding deleteSQLMartTableJoin:\n$deleteSQLMartTableJoin\n"); }
+    # Generate MTJ record(s)
+    if ($deleteExisting) {
+      my $deleteSQLMartTableJoin = qq{
+        DELETE FROM $martTableJoinTableName A
+        WHERE 
+          A.TYPE = '$type' AND
+          A.FROM_SCHEMA = '$fromSchema' AND
+          A.TO_SCHEMA = '$toSchema' AND
+          A.FROM_TABLE = '$fromTable' AND
+          A.TO_TABLE = '$toTable';\n};
 
-          $outputSQL .= $deleteSQLMartTableJoin;
-        } ## end if ($deleteExisting)
+      if ($verbose) { print("$subName Adding deleteSQLMartTableJoin:\n$deleteSQLMartTableJoin\n"); }
 
-        for my $fkToField (@{$fkComponents->{$fkKey}->{'toFields'}}) {
-          if ($verbose) {
-            print("$subName Processing:$fkComponents->{$fkKey}->{fkName} for type $type and toField $fkToField...\n");
-          }
-          my $fkFromField  = @{$fkComponents->{$fkKey}->{'fromFields'}}[$i];    # Grab the matching from field
-          my $fieldJoinOrd = $i + 1;
+      $outputSQL .= $deleteSQLMartTableJoin;
+    } ## end if ($deleteExisting)
 
-          # Adobe joins are backwards
-          if ($type eq 'ADOBE') {
-            ($fkToField, $fkFromField) = ($fkFromField, $fkToField);
-          }
+    my $i = 0;    # Setup a loop counter to use for field indexing and numbering
+    for my $fkToField (@{$fkComponents->{$fkKey}->{'toFields'}}) {
+      if ($verbose) {
+        print("$subName Processing:$fkComponents->{$fkKey}->{fkName} for type $type and toField $fkToField...\n");
+      }
+      my $fkFromField  = @{$fkComponents->{$fkKey}->{'fromFields'}}[$i];    # Grab the matching from field
+      my $fieldJoinOrd = $i + 1;
 
-          my $mergeSQLMartTableJoin = qq{
-          MERGE INTO $martTableJoinTableName A USING
-          (SELECT
-            '$fromSchema' as FROM_SCHEMA,
-            '$fromTable' as FROM_TABLE,
-            '$fkFromField' as FROM_FIELD,
-            '$toSchema' as TO_SCHEMA,
-            '$toTable' as TO_TABLE,
-            '$fkToField' as TO_FIELD,
-            $fieldJoinOrd as FIELD_JOIN_ORD,
-            '$type' as TYPE,
-            'AUTO-GENERATED BY Unregistered JoinHero 2 using $fkKey' as NOTES,
-            '$coreFlg' as CORE_FLG
-            FROM DUAL) B
-          ON (  A.TYPE = B.TYPE 
-            and A.FROM_SCHEMA = B.FROM_SCHEMA 
-            and A.TO_SCHEMA = B.TO_SCHEMA 
-            and A.FROM_TABLE = B.FROM_TABLE 
-            and A.TO_TABLE = B.TO_TABLE 
-            and A.FIELD_JOIN_ORD = B.FIELD_JOIN_ORD)
-          WHEN NOT MATCHED THEN 
-          INSERT (
-            FROM_SCHEMA, FROM_TABLE, FROM_FIELD, TO_SCHEMA, TO_TABLE, 
-            TO_FIELD, FIELD_JOIN_ORD, TYPE, NOTES, CORE_FLG)
-          VALUES (
-            B.FROM_SCHEMA, B.FROM_TABLE, B.FROM_FIELD, B.TO_SCHEMA, B.TO_TABLE, 
-            B.TO_FIELD, B.FIELD_JOIN_ORD, B.TYPE, B.NOTES, B.CORE_FLG)};
+      # Determine the to and from fields
+      my $fromField;
+      my $toField;
+      if ($type eq 'ADOBE') {                                               # Adobe joins are backwards
+        $fromField = $fkToField;
+        $toField   = $fkFromField;
+      }
+      else {                                                                # Default to the supplied join order
+        $fromField = $fkFromField;
+        $toField   = $fkToField;
+      }
 
-          if ($updateExisting) {
-            $mergeSQLMartTableJoin .= qq{
-          WHEN MATCHED THEN
-          UPDATE SET 
-            A.FROM_FIELD = B.FROM_FIELD,
-            A.TO_FIELD = B.TO_FIELD,
-            A.NOTES = B.NOTES,
-            A.CORE_FLG = B.CORE_FLG};
-          } ## end if ($updateExisting)
-
-          $mergeSQLMartTableJoin .= ";\n";
-
-          if ($verbose) { print("$subName Adding mergeSQLMartTableJoin:\n$mergeSQLMartTableJoin\n"); }
-
-          $outputSQL .= $mergeSQLMartTableJoin;
-
-          $i++;    # Record that we added a join record
-        } ## end for my $fkToField (@{$fkComponents...})
-
-        # Add cardinality record
-        my $direction = $type eq 'ADOBE' ? 'from' : 'to';
-        my $cardinality = getJoinCardinality($pkComponents, $fkComponents->{$fkKey}, $direction);
-
-        if ($deleteExisting) {
-          my $deleteSQLMartTableJoinCardinality = qq{
-            DELETE FROM $martTableJoinCardinalityTableName A
-            WHERE 
-              A.TYPE = '$type' AND
-              A.FROM_SCHEMA = '$fromSchema' AND
-              A.TO_SCHEMA = '$toSchema' AND
-              A.FROM_TABLE = '$fromTable' AND
-              A.TO_TABLE = '$toTable';\n};
-
-          if ($verbose) {
-            print("$subName Adding deleteSQLMartTableJoinCardinality:\n$deleteSQLMartTableJoinCardinality\n");
-          }
-
-          $outputSQL .= $deleteSQLMartTableJoinCardinality;
-        } ## end if ($deleteExisting)
-
-        my $mergeSQLMartTableJoinCardinality = qq{
-        MERGE INTO $martTableJoinCardinalityTableName A USING
+      my $mergeSQLMartTableJoin = qq{
+        MERGE INTO $martTableJoinTableName A USING
         (SELECT
           '$fromSchema' as FROM_SCHEMA,
           '$fromTable' as FROM_TABLE,
+          '$fromField' as FROM_FIELD,
           '$toSchema' as TO_SCHEMA,
           '$toTable' as TO_TABLE,
-          '$cardinality' as CARDINALITY,
+          '$toField' as TO_FIELD,
+          $fieldJoinOrd as FIELD_JOIN_ORD,
           '$type' as TYPE,
           'AUTO-GENERATED BY Unregistered JoinHero 2 using $fkKey' as NOTES,
           '$coreFlg' as CORE_FLG
           FROM DUAL) B
-        ON (
-          A.TYPE = B.TYPE 
+        ON (  A.TYPE = B.TYPE 
           and A.FROM_SCHEMA = B.FROM_SCHEMA 
           and A.TO_SCHEMA = B.TO_SCHEMA 
           and A.FROM_TABLE = B.FROM_TABLE 
-          and A.TO_TABLE = B.TO_TABLE)
+          and A.TO_TABLE = B.TO_TABLE 
+          and A.FIELD_JOIN_ORD = B.FIELD_JOIN_ORD)
         WHEN NOT MATCHED THEN 
         INSERT (
-          FROM_SCHEMA, FROM_TABLE, TO_SCHEMA, TO_TABLE, CARDINALITY, 
-          TYPE, NOTES, CORE_FLG)
+          FROM_SCHEMA, FROM_TABLE, FROM_FIELD, TO_SCHEMA, TO_TABLE, 
+          TO_FIELD, FIELD_JOIN_ORD, TYPE, NOTES, CORE_FLG)
         VALUES (
-          B.FROM_SCHEMA, B.FROM_TABLE, B.TO_SCHEMA, B.TO_TABLE, B.CARDINALITY, 
-          B.TYPE, B.NOTES, B.CORE_FLG)};
+          B.FROM_SCHEMA, B.FROM_TABLE, B.FROM_FIELD, B.TO_SCHEMA, B.TO_TABLE, 
+          B.TO_FIELD, B.FIELD_JOIN_ORD, B.TYPE, B.NOTES, B.CORE_FLG)};
 
-        if ($updateExisting) {
-          $mergeSQLMartTableJoinCardinality .= qq{
-          WHEN MATCHED THEN
-          UPDATE SET 
-            A.CARDINALITY = B.CARDINALITY,
-            A.NOTES = B.NOTES,
-            A.CORE_FLG = B.CORE_FLG};
-        } ## end if ($updateExisting)
+      if ($updateExisting) {
+        $mergeSQLMartTableJoin .= qq{
+        WHEN MATCHED THEN
+        UPDATE SET 
+          A.FROM_FIELD = B.FROM_FIELD,
+          A.TO_FIELD = B.TO_FIELD,
+          A.NOTES = B.NOTES,
+          A.CORE_FLG = B.CORE_FLG};
+      } ## end if ($updateExisting)
 
-        $mergeSQLMartTableJoinCardinality .= ";\n";
+      $mergeSQLMartTableJoin .= ";\n";
 
-        if ($verbose) {
-          print("$subName Adding mergeSQLMartTableJoinCardinality:\n$mergeSQLMartTableJoinCardinality\n");
-        }
+      if ($verbose) { print("$subName Adding mergeSQLMartTableJoin:\n$mergeSQLMartTableJoin\n"); }
 
-        $outputSQL .= $mergeSQLMartTableJoinCardinality;
+      $outputSQL .= $mergeSQLMartTableJoin;
 
-      } ## end if ($toSchema eq $fromSchema)
-      else {
-        if ($verbose) {
-          print("$subName    Join was cross schema ($toSchema to $fromSchema) this is not supported, skipping\n");
-        }
-      }
-    } ## end if ($toSchema or $fromSchema)
-    else {
+      $i++;    # Record that we added a join record
+    } ## end for my $fkToField (@{$fkComponents...})
+
+    # Add cardinality record
+    my $direction = $type eq 'ADOBE' ? 'from' : 'to';
+    my $cardinality = getJoinCardinality($pkComponents, $fkComponents->{$fkKey}, $direction);
+
+    if ($deleteExisting) {
+      my $deleteSQLMartTableJoinCardinality = qq{
+          DELETE FROM $martTableJoinCardinalityTableName A
+          WHERE 
+            A.TYPE = '$type' AND
+            A.FROM_SCHEMA = '$fromSchema' AND
+            A.TO_SCHEMA = '$toSchema' AND
+            A.FROM_TABLE = '$fromTable' AND
+            A.TO_TABLE = '$toTable';\n};
+
       if ($verbose) {
-        print("$subName    Join did not meet requirements or was missing needed information, skipping\n");
+        print("$subName Adding deleteSQLMartTableJoinCardinality:\n$deleteSQLMartTableJoinCardinality\n");
       }
+
+      $outputSQL .= $deleteSQLMartTableJoinCardinality;
+    } ## end if ($deleteExisting)
+
+    my $mergeSQLMartTableJoinCardinality = qq{
+      MERGE INTO $martTableJoinCardinalityTableName A USING
+      (SELECT
+        '$fromSchema' as FROM_SCHEMA,
+        '$fromTable' as FROM_TABLE,
+        '$toSchema' as TO_SCHEMA,
+        '$toTable' as TO_TABLE,
+        '$cardinality' as CARDINALITY,
+        '$type' as TYPE,
+        'AUTO-GENERATED BY Unregistered JoinHero 2 using $fkKey' as NOTES,
+        '$coreFlg' as CORE_FLG
+        FROM DUAL) B
+      ON (
+        A.TYPE = B.TYPE 
+        and A.FROM_SCHEMA = B.FROM_SCHEMA 
+        and A.TO_SCHEMA = B.TO_SCHEMA 
+        and A.FROM_TABLE = B.FROM_TABLE 
+        and A.TO_TABLE = B.TO_TABLE)
+      WHEN NOT MATCHED THEN 
+      INSERT (
+        FROM_SCHEMA, FROM_TABLE, TO_SCHEMA, TO_TABLE, CARDINALITY, 
+        TYPE, NOTES, CORE_FLG)
+      VALUES (
+        B.FROM_SCHEMA, B.FROM_TABLE, B.TO_SCHEMA, B.TO_TABLE, B.CARDINALITY, 
+        B.TYPE, B.NOTES, B.CORE_FLG)};
+
+    if ($updateExisting) {
+      $mergeSQLMartTableJoinCardinality .= qq{
+        WHEN MATCHED THEN
+        UPDATE SET 
+          A.CARDINALITY = B.CARDINALITY,
+          A.NOTES = B.NOTES,
+          A.CORE_FLG = B.CORE_FLG};
+    } ## end if ($updateExisting)
+
+    $mergeSQLMartTableJoinCardinality .= ";\n";
+
+    if ($verbose) {
+      print("$subName Adding mergeSQLMartTableJoinCardinality:\n$mergeSQLMartTableJoinCardinality\n");
     }
+
+    $outputSQL .= $mergeSQLMartTableJoinCardinality;
+
   } ## end for my $type (@supportedTypes)
 
   return $outputSQL;
@@ -527,8 +533,20 @@ sub getTableName {
 # Use the first part of the table name up to the first underscore for the schema name
 sub getSchemaName {
   my ($tableName) = @_;
-  return ($tableName =~ /([a-zA-Z0-9]+?)_.*/)[0];
-}
+
+  # Take the first token using underscore delimiter
+  my $schemaName = ($tableName =~ /([a-zA-Z0-9]+?)_.*/)[0];
+
+  # CMP prefixes are special and actually mean CMP_DM
+  if (defined $schemaName) {
+    if ($schemaName eq 'CMP') { $schemaName = 'CMP_DM'; }
+  }
+
+  # Check schema is in our whitelist. If not, unset the value
+  if (!($schemaName ~~ @supportedMarts)) { $schemaName = undef; }
+
+  return $schemaName;
+} ## end sub getSchemaName
 ##--------------------------------------------------------------------------
 
 ########################### todo, replace these subs below with partnerApps.pm if the cross platform issues are solved
