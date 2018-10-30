@@ -366,7 +366,7 @@ sub getJoinSQL {
         $toField   = $fkToField;
       }
 
-      if ($i > 0) {$mergeSQLData .= qq{\n        UNION};}
+      if ($i > 0) { $mergeSQLData .= qq{\n        UNION}; }
       $mergeSQLData .= qq{
         SELECT
           '$fromSchema' as FROM_SCHEMA,
@@ -384,10 +384,41 @@ sub getJoinSQL {
       $i++;    # Record that we added a join record
     } ## end for my $fkToField (@{$fkComponents...})
 
-    # Construct the merge statement
+    # Construct the MTJ merge statement
+    my $mergeSQLMartTableJoinExistingCheckHeader = '';
+    my $mergeSQLMartTableJoinExistingCheckFooter = '';
+    if (!$deleteExisting) {
+
+      # If we aren't clearing out the existing join metadata,
+      # make sure it doesn't exist in any form before trying to insert
+      $mergeSQLMartTableJoinExistingCheckHeader = qq{
+      WITH C AS
+        ( SELECT COUNT (*) AS rec_count
+          FROM $martTableJoinTableName A
+          WHERE     
+            A.TYPE = '$type' AND
+            NVL(A.CORE_FLG,'NULL') = '$coreFlg' AND
+            A.FROM_SCHEMA = '$fromSchema' AND
+            A.TO_SCHEMA = '$toSchema' AND
+            A.FROM_TABLE = '$fromTable' AND
+            A.TO_TABLE = '$toTable'
+        )
+      SELECT mtj.*
+      FROM  (};
+
+      # Only attempt to update without a delete if our field count is less than or equal to the existing count
+      my $mergeSQLMartTableJoinExistingCheckFooterCrossJoinClause = 'c.rec_count = 0';
+      if ($updateExisting) { $mergeSQLMartTableJoinExistingCheckFooterCrossJoinClause = qq{c.rec_count <= $i}; }
+
+      $mergeSQLMartTableJoinExistingCheckFooter = qq{
+      ) mtj
+        CROSS JOIN c
+        WHERE $mergeSQLMartTableJoinExistingCheckFooterCrossJoinClause};
+    } ## end if (!$deleteExisting)
+
     my $mergeSQLMartTableJoin = qq{
       MERGE INTO $martTableJoinTableName A USING
-      ($mergeSQLData
+      ($mergeSQLMartTableJoinExistingCheckHeader $mergeSQLData $mergeSQLMartTableJoinExistingCheckFooter
       ) B
       ON (  A.TYPE = B.TYPE
         and NVL(A.CORE_FLG,'NULL1') = NVL(B.CORE_FLG,'NULL2')
