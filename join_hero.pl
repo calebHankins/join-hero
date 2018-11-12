@@ -22,9 +22,10 @@
 
 use strict;
 use warnings;
-use IO::Handle;      # Supply object methods for I/O handles
-use Getopt::Long;    # Extended processing of command line options
-use Pod::Usage;      # Print a usage message from embedded pod documentation
+use IO::Handle;            # Supply object methods for I/O handles
+use Getopt::Long;          # Extended processing of command line options
+use Pod::Usage;            # Print a usage message from embedded pod documentation
+use File::Glob ':glob';    # Perl extension for BSD glob routine
 
 use Data::Dumper;
 use File::Path qw(make_path);
@@ -71,6 +72,7 @@ my $rc = GetOptions(
 sanityCheckOptions();
 
 # Load up DDL source file
+print $inputFilepath;
 my $inputFileContents = openAndLoadFile($inputFilepath);
 
 # Parse DDL Source file into usable components
@@ -100,9 +102,9 @@ sub sanityCheckOptions {
   print("$subName Supported mart prefixes: [" . join(',', @supportedMarts) . "]\n");
   print("$subName Processing '$inputFilepath', wish me luck!\n");
 
-  $inputFilepath = glob($inputFilepath);
+  $inputFilepath = bsd_glob($inputFilepath);
   $errorCnt += checkRequiredParm($inputFilepath, 'inputFilepath');
-  $outputFilepath = glob($outputFilepath);
+  $outputFilepath = bsd_glob($outputFilepath);
   $errorCnt += checkRequiredParm($outputFilepath, 'outputFilepath');
 
   # Check for errors before starting processing
