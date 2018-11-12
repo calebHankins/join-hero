@@ -72,7 +72,6 @@ my $rc = GetOptions(
 sanityCheckOptions();
 
 # Load up DDL source file
-print $inputFilepath;
 my $inputFileContents = openAndLoadFile($inputFilepath);
 
 # Parse DDL Source file into usable components
