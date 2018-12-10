@@ -1,5 +1,5 @@
 ---
-abstract: 'Oracle DDL parser for scraping PK/FK/Unique Key metadata describing table joins '
+abstract: 'Oracle DDL parser for scraping PK/FK/Unique Key metadata describing table joins'
 author:
   - 'Caleb Hankins (caleb.hankins at acxiom.com)'
 build_requires: {}

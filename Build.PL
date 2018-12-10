@@ -9,7 +9,7 @@ use Module::Build;
 my $build = Module::Build->new(
                   module_name    => 'JoinHero',
                   license        => 'apache',
-                  dist_abstract  => 'Oracle DDL parser for scraping PK/FK/Unique Key metadata describing table joins ',
+                  dist_abstract  => 'Oracle DDL parser for scraping PK/FK/Unique Key metadata describing table joins',
                   dist_author    => 'Caleb Hankins (caleb.hankins at acxiom.com)',
                   script_files   => 'script/join-hero',
                   release_status => 'unstable',
