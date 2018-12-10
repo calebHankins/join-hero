@@ -92,3 +92,6 @@ scratch
 
 # Avoid tidyall files
 .tidyall.d
+
+# Avoid assets only needed for readme
+\bimg

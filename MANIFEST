@@ -1,0 +1,15 @@
+.perlcriticrc
+.perltidyrc
+.tidyallrc
+Build.PL
+CONTRIBUTING.md
+lib/JoinHero.pm
+lib/JoinHero/Logger.pm
+LICENSE
+MANIFEST			This list of files
+perltidy.rc
+README.md
+script/join-hero
+t/00-load.t
+t/lint.t
+t/style.t
