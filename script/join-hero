@@ -20,9 +20,19 @@
 
 use strict;
 use warnings;
+use IO::Handle;                                 # Supply object methods for I/O handles
+use Pod::Usage;                                 # Print a usage message from embedded pod documentation
+use Getopt::Long;                               # Extended processing of command line options
+use Cwd qw( cwd abs_path );                     # Get current working directory and absolute file paths
+use File::Basename;                             # Parse file paths into directory, filename and suffix
 use File::Glob ':glob';                         # Perl extension for BSD glob routine
 use lib dirname(dirname(__FILE__)) . '/lib';    # Use local libraries if we have them
 use JoinHero;
+no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smartmatch warnings
+
+# Turn on auto-flush / hot pipes
+STDOUT->autoflush(1);
+STDERR->autoflush(1);
 
 my $inputFilepath                     = '';
 my $updateExisting                    = '';
@@ -68,7 +78,15 @@ my $inputFileContents = JoinHero::openAndLoadFile($inputFilepath);
 my ($pk, $fk) = JoinHero::getKeyComponents($inputFileContents);
 
 # Use our component list to construct some oracle merge statements
-my $outputFileContents = JoinHero::getOutputSQL($pk, $fk);
+my $outputFileContents = JoinHero::getOutputSQL(
+                                                $pk,                                $fk,
+                                                $commitThreshold,                   $deleteExisting,
+                                                $updateExisting,                    $martTableJoinTableName,
+                                                $martTableJoinCardinalityTableName, $coreFlg,
+                                                \@supportedTypes,                   \@supportedMarts
+);
+
+# todo, refactor this to use a hash so we can have named params
 
 # Create file containing SQL statements that can be used to update join metadata
 JoinHero::createExportFile($outputFileContents, $outputFilepath);
@@ -85,28 +103,31 @@ sub sanityCheckOptions {
   if ($marts) { @supportedMarts = split(',', $marts); }
   if ('CMP'    ~~ @supportedMarts) { push(@supportedMarts, 'CMP_DM'); }    # Add the long name if short is present
   if ('CMP_DM' ~~ @supportedMarts) { push(@supportedMarts, 'CMP'); }       # Add the short name if long is present
-  @supportedMarts = getUniqArray(@supportedMarts);
+  @supportedMarts = JoinHero::getUniqArray(@supportedMarts);
 
-  print("$subName Supported target application types: [" . join(',', @supportedTypes) . "]\n");
-  print("$subName Supported mart prefixes: [" . join(',', @supportedMarts) . "]\n");
-  print("$subName Processing '$inputFilepath', wish me luck!\n");
+  $JoinHero::logger->info("$subName Supported target application types: [" . join(',', @supportedTypes) . "]\n");
+  $JoinHero::logger->info("$subName Supported mart prefixes: [" . join(',', @supportedMarts) . "]\n");
+  $JoinHero::logger->info("$subName Processing '$inputFilepath', wish me luck!\n");
 
   $inputFilepath = bsd_glob($inputFilepath);
-  $errorCnt += JoinHero::checkRequiredParm($inputFilepath, 'inputFilepath');
+  JoinHero::checkRequiredParm($inputFilepath, 'inputFilepath');
   $outputFilepath = bsd_glob($outputFilepath);
-  $errorCnt += JoinHero::checkRequiredParm($outputFilepath, 'outputFilepath');
+  JoinHero::checkRequiredParm($outputFilepath, 'outputFilepath');
+
+  # Set package level variables
+  $JoinHero::verbose = $verbose;
 
   # Check for errors before starting processing
-  if ($errorCnt > 0) {
+  if ($JoinHero::logger->get_count("ERROR") > 0) {
 
-    # Print informational message to standard output
-    print(  "$subName There were ["
-          . $errorCnt
-          . "] error messages detected while sanity checking options. Script is halting.");
+    # Print informational message to standard error
+    $JoinHero::logger->error(  "$subName There were ["
+                             . $JoinHero::logger->get_count("ERROR")
+                             . "] error messages detected while sanity checking options. Script is halting.");
 
     # Exit with a non-zero code and print usage
     pod2usage(10);
-  } ## end if ($errorCnt > 0)
+  } ## end if ($JoinHero::logger->...)
 
   return;
 } ## end sub sanityCheckOptions
