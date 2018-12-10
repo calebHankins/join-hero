@@ -19,13 +19,13 @@ Transform DDL that describes keys (foreign, primary and unique) into join metada
       - [Example Commands To Install Log Log4perl On Various Platforms](#example-commands-to-install-log-log4perl-on-various-platforms)
     - [Troubleshooting](#troubleshooting)
   - [Run Without Installing](#run-without-installing)
-  - [Generating Metadata Update SQL Commands](#generating-metadata-update-sql-commands)
-    - [Usage](#usage)
+  - [Usage](#usage)
+    - [Generating Metadata Update SQL Commands](#generating-metadata-update-sql-commands)
   - [Running SQL Commands](#running-sql-commands)
   - [Sample Models](#sample-models)
   - [Exporting DDL from the Datamodel](#exporting-ddl-from-the-datamodel)
-    - [Manual Export](#manual-export)
     - [Automated Export](#automated-export)
+    - [Manual Export](#manual-export)
 
 ## Note for Windows Users
 This application requires Perl to be installed and on your path. [Active Perl](https://en.wikipedia.org/wiki/ActivePerl) is one alternative for installing a Perl interpreter.
@@ -142,31 +142,32 @@ Note, you will have to [install any missing dependencies manually](#manual-depen
 perl -I '.\vendor' .\script\join-hero --help
 ```
 
-## Generating Metadata Update SQL Commands
+## Usage
 
-### Usage
-
-```powershell
+```bash
 # Print usage info
 join-hero --help
 ```
 
+### Generating Metadata Update SQL Commands
+
 ```bash
 # Generate a full_insert.sql file containing SQL commands to update metadata
-join-hero -i './model.ddl' -o './update_sql/full_insert.sql' -v > ./logs/full_insert.log
-
-# Override target tables to research tables, include delete flag for cleanup
-join-hero -i './model.ddl' -o './update_sql/full_update.sql' > ./logs/full_update.log --martTableJoinTableName 'TEMP_MERGED_MTJ' --martTableJoinCardinalityTableName 'TEMP_MERGED_MTJ_CARD' -d
+join-hero -i './model.ddl' -o './update_sql/full_insert.sql' -v
 ```
 
 ## Running SQL Commands
-The output of join-hero can be executed via your favorite SQL execution engine that can handle statements delimited by semicolons.
+The output of join-hero can be executed via your favorite SQL execution engine that can handle statements delimited by semicolons. The tool does not currently create an empty set of target tables if they don't already exist.
 
 ## Sample Models
 Sample data models can be [found here](https://www.oracle.com/technetwork/developer-tools/datamodeler/sample-models-scripts-224531.html). 
 
 ## Exporting DDL from the Datamodel
  The join-hero utility derives join metadata using a DDL export generated from the Oracle SQL Data Model Utility. This metadata is converted to a standard format used by other tools to overlay the join layer.
+
+### Automated Export
+See the sister [model-citizen](https://github.com/Acxiom/model-citizen) project for an automated data modeler export option for ci/cd needs.
+
 
 ### Manual Export
 Use the following step to convert the Datamodel into a .ddl file containing valid Oracle SQL for defining Oracle objects.
@@ -206,5 +207,3 @@ Sanity check the generated SQL code, insure that it has all the required DDL sta
 
 Save the generated DDL file somewhere that the join-hero utility can read it.
 
-### Automated Export
-See the sister [model-citizen](https://github.com/Acxiom/model-citizen) project for an automated data modeler export option for ci/cd needs.
