@@ -219,15 +219,15 @@ sub getJoinSQL {
   my $outputSQL = '';
 
   # Alias our params for easier use
-  my $pkComponents                      = $getJoinSQLParams->{pkComponents};
-  my $fkComponents                      = $getJoinSQLParams->{fkComponents};
-  my $deleteExisting                    = $getJoinSQLParams->{deleteExisting};
-  my $updateExisting                    = $getJoinSQLParams->{updateExisting};
-  my $martTableJoinTableName            = $getJoinSQLParams->{martTableJoinTableName};
-  my $martTableJoinCardinalityTableName = $getJoinSQLParams->{martTableJoinCardinalityTableName};
-  my $coreFlg                           = $getJoinSQLParams->{coreFlg};
-  my @supportedTypes                    = @{$getJoinSQLParams->{supportedTypes}};
-  my @supportedMarts                    = @{$getJoinSQLParams->{supportedMarts}};
+  my $pkComponents             = $getJoinSQLParams->{pkComponents};
+  my $fkComponents             = $getJoinSQLParams->{fkComponents};
+  my $deleteExisting           = $getJoinSQLParams->{deleteExisting};
+  my $updateExisting           = $getJoinSQLParams->{updateExisting};
+  my $martTableJoinTableName   = $getJoinSQLParams->{martTableJoinTableName};
+  my $martCardinalityTableName = $getJoinSQLParams->{martCardinalityTableName};
+  my $coreFlg                  = $getJoinSQLParams->{coreFlg};
+  my @supportedTypes           = @{$getJoinSQLParams->{supportedTypes}};
+  my @supportedMarts           = @{$getJoinSQLParams->{supportedMarts}};
 
   if ($verbose) { $logger->info("$subName Processing:$fkComponents->{$fkKey}->{fkName}...\n"); }
   for my $type (@supportedTypes) {
@@ -406,7 +406,7 @@ sub getJoinSQL {
 
     if ($deleteExisting) {
       my $deleteSQLMartTableJoinCardinality = qq{
-      DELETE FROM $martTableJoinCardinalityTableName A
+      DELETE FROM $martCardinalityTableName A
       WHERE 
         A.TYPE = '$type' AND
         NVL(A.CORE_FLG,'NULL') = '$coreFlg' AND
@@ -423,7 +423,7 @@ sub getJoinSQL {
     } ## end if ($deleteExisting)
 
     my $mergeSQLMartTableJoinCardinality = qq{
-      MERGE INTO $martTableJoinCardinalityTableName A USING
+      MERGE INTO $martCardinalityTableName A USING
       (
         SELECT
           '$fromSchema' as FROM_SCHEMA,
