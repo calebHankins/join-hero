@@ -222,8 +222,8 @@ join-hero
   't|testMode'                   Skip call to create output file(s) but print all of the other information.
   'v|verbose'                    Print more verbose output.
   
-  help  Print brief help information.
-  man   Read the manual, includes examples.
+  'help'                         Print brief help information.
+  'man'                          Read the manual, includes examples.
 
 =head1 EXAMPLES
 
