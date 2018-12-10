@@ -1,0 +1,34 @@
+---
+abstract: 'Oracle DDL parser for scraping PK/FK/Unique Key metadata describing table joins'
+author:
+  - 'Caleb Hankins (caleb.hankins at acxiom.com)'
+build_requires: {}
+configure_requires:
+  Module::Build: '0'
+dynamic_config: 1
+generated_by: 'Module::Build version 0.4224, CPAN::Meta::Converter version 2.150010'
+license: apache
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: '1.4'
+name: JoinHero
+provides:
+  JoinHero:
+    file: lib/JoinHero.pm
+    version: v0.0.1
+  JoinHero::Logger:
+    file: lib/JoinHero/Logger.pm
+requires:
+  Cwd: '0'
+  Data::Dumper: '0'
+  File::Glob: '0'
+  File::Path: '0'
+  Getopt::Long: '0'
+  IO::Handle: '0'
+  Log::Log4perl: '0'
+  Pod::Usage: '0'
+  perl: v5.10.1
+resources:
+  license: http://apache.org/licenses/LICENSE-2.0
+version: v0.0.1
+x_serialization_backend: 'CPAN::Meta::YAML version 0.018'

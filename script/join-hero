@@ -1,0 +1,244 @@
+#!/usr/bin/perl
+############################################################################################
+#                       (C) Copyright 2018 Acxiom LLC
+#                               All Rights Reserved.
+############################################################################################
+#
+# Script: join-hero
+# Author: Caleb Hankins - chanki
+# Date:   2018-12-10
+#
+# Purpose: Oracle DDL parser for scraping PK/FK/Unique Key metadata describing table joins
+#
+############################################################################################
+# MODIFICATION HISTORY
+##----------------------------------------------------------------------------------------
+# DATE        PROGRAMMER                   DESCRIPTION
+##----------------------------------------------------------------------------------------
+# 2018-12-10  Caleb Hankins - chanki       Initial Copy
+############################################################################################
+
+use strict;
+use warnings;
+use IO::Handle;                                 # Supply object methods for I/O handles
+use Pod::Usage;                                 # Print a usage message from embedded pod documentation
+use Getopt::Long;                               # Extended processing of command line options
+use Cwd qw( cwd abs_path );                     # Get current working directory and absolute file paths
+use File::Basename;                             # Parse file paths into directory, filename and suffix
+use File::Glob ':glob';                         # Perl extension for BSD glob routine
+use lib dirname(dirname(__FILE__)) . '/lib';    # Use local libraries if we have them
+use JoinHero;
+no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smartmatch warnings
+
+# Turn on auto-flush / hot pipes
+STDOUT->autoflush(1);
+STDERR->autoflush(1);
+
+my $inputFilepath            = '';
+my $updateExisting           = '';
+my $deleteExisting           = '';
+my $types                    = '';
+my $martPrefixes             = '';
+my @supportedTypes           = ('SAMPLE');
+my @supportedMarts           = ('SAMPLE');
+my $outputFilepath           = '';
+my $martTableJoinTableName   = 'MART_TABLE_JOIN';
+my $martCardinalityTableName = 'MART_TABLE_JOIN_CARDINALITY';
+my $commitThreshold          = 1000;
+my $coreFlg                  = 'Y';
+my $allowUnknownSchema       = '';
+my $testMode                 = '';
+my $verbose                  = '';
+
+my $rc = GetOptions(
+  'i|file|inputFilepath=s'     => \$inputFilepath,
+  'o|out|outputFilepath=s'     => \$outputFilepath,
+  'types=s'                    => \$types,
+  'marts|martPrefixes=s'       => \$martPrefixes,
+  'u|updateExisting'           => \$updateExisting,
+  'd|deleteExisting'           => \$deleteExisting,
+  'martTableJoinTableName=s'   => \$martTableJoinTableName,
+  'martCardinalityTableName=s' => \$martCardinalityTableName,
+  'commitThreshold=i'          => \$commitThreshold,
+  'coreFlg=s'                  => \$coreFlg,
+  'allowUnknownSchema'         => \$allowUnknownSchema,
+
+  't|testMode' => \$testMode,
+  'v|verbose'  => \$verbose,
+
+  # Version info
+  'version' => \&logVersionInfo,
+
+  #pod2usage variables
+  'help' => sub { pod2usage(0); },
+  'man'  => sub { pod2usage(-exitstatus => 0, -verbose => 2); }
+);
+
+# Give script options the ol' sanity check
+sanityCheckOptions();
+
+# Print script config info to log
+logScriptConfig();
+
+# Load up DDL source file
+my $inputFileContents = JoinHero::openAndLoadFile($inputFilepath);
+
+# Parse DDL Source file into usable components
+my ($pk, $fk) = JoinHero::getKeyComponents($inputFileContents, \@supportedMarts);
+
+# Use our component list to construct some oracle merge statements
+my $outputFileContents = JoinHero::getOutputSQL(
+                                                {
+                                                 pkComponents             => $pk,
+                                                 fkComponents             => $fk,
+                                                 commitThreshold          => $commitThreshold,
+                                                 deleteExisting           => $deleteExisting,
+                                                 updateExisting           => $updateExisting,
+                                                 martTableJoinTableName   => $martTableJoinTableName,
+                                                 martCardinalityTableName => $martCardinalityTableName,
+                                                 coreFlg                  => $coreFlg,
+                                                 supportedTypes           => \@supportedTypes,
+                                                 supportedMarts           => \@supportedMarts,
+                                                 allowUnknownSchema       => $allowUnknownSchema
+                                                }
+);
+
+# Create file containing SQL statements that can be used to update join metadata
+if (!$testMode) { JoinHero::createExportFile($outputFileContents, $outputFilepath); }
+
+##---------------------------------------------------------------------------
+END {
+  exit(JoinHero::signOff($?));
+}
+##---------------------------------------------------------------------------
+
+##---------------------------------------------------------------------------
+# Give script options the ol' sanity check
+sub sanityCheckOptions {
+  my $subName  = (caller(0))[3];
+  my $errorCnt = 0;
+
+  if ($types)        { @supportedTypes = split(',', $types); }
+  if ($martPrefixes) { @supportedMarts = split(',', $martPrefixes); }
+  if ('CMP'    ~~ @supportedMarts) { push(@supportedMarts, 'CMP_DM'); }    # Add the long name if short is present
+  if ('CMP_DM' ~~ @supportedMarts) { push(@supportedMarts, 'CMP'); }       # Add the short name if long is present
+  @supportedMarts = JoinHero::getUniqArray(@supportedMarts);
+
+  $inputFilepath = bsd_glob($inputFilepath);
+  JoinHero::checkRequiredParm($inputFilepath, 'inputFilepath');
+  $outputFilepath = bsd_glob($outputFilepath);
+  JoinHero::checkRequiredParm($outputFilepath, 'outputFilepath');
+
+  JoinHero::checkRequiredParm($martTableJoinTableName,   'martTableJoinTableName');
+  JoinHero::checkRequiredParm($martCardinalityTableName, 'martCardinalityTableName');
+
+  # Set package level variables
+  $JoinHero::verbose = $verbose;
+
+  # Check for errors before starting processing
+  if ($JoinHero::logger->get_count("ERROR") > 0) {
+
+    # Print informational message to standard error
+    $JoinHero::logger->error(  "$subName There were ["
+                             . $JoinHero::logger->get_count("ERROR")
+                             . "] error messages detected while sanity checking options. Script is halting.");
+
+    # Exit with a non-zero code and print usage
+    pod2usage(10);
+  } ## end if ($JoinHero::logger->...)
+
+  return;
+} ## end sub sanityCheckOptions
+##---------------------------------------------------------------------------
+
+##---------------------------------------------------------------------------
+# Print [Script Config Information] to log
+sub logScriptConfig {
+  $JoinHero::logger->info("[Script Config Information]");
+  $JoinHero::logger->info("  script path:             [$0]");
+  $JoinHero::logger->info("  inputFilepath:           [$inputFilepath]");
+  $JoinHero::logger->info("  outputFilepath:          [$outputFilepath]");
+
+  $JoinHero::logger->info("  types:                   [@supportedTypes]");
+  $JoinHero::logger->info("  mart schema prefixes:    [@supportedMarts]");
+
+  $JoinHero::logger->info("  martTableJoinTableName:  [$martTableJoinTableName]");
+  $JoinHero::logger->info("  martCardinalityTableName:[$martCardinalityTableName]");
+
+  $allowUnknownSchema
+    ? $JoinHero::logger->info("  allowUnknownSchema:      [Enabled]")
+    : $JoinHero::logger->info("  allowUnknownSchema:      [Disabled]");
+  $updateExisting
+    ? $JoinHero::logger->info("  updateExisting:          [Enabled]")
+    : $JoinHero::logger->info("  updateExisting:          [Disabled]");
+  $deleteExisting
+    ? $JoinHero::logger->info("  deleteExisting:          [Enabled]")
+    : $JoinHero::logger->info("  deleteExisting:          [Disabled]");
+
+  $testMode
+    ? $JoinHero::logger->info("  testMode:                [Enabled]")
+    : $JoinHero::logger->info("  testMode:                [Disabled]");
+  $verbose
+    ? $JoinHero::logger->info("  verbose:                 [Enabled]")
+    : $JoinHero::logger->info("  verbose:                 [Disabled]");
+  $JoinHero::logger->info("");
+
+  return;
+} ## end sub logScriptConfig
+##---------------------------------------------------------------------------
+
+##---------------------------------------------------------------------------
+# Print [Version Information] to log
+sub logVersionInfo {
+  my $subName = (caller(0))[3];
+  $JoinHero::logger->info("$subName join-hero Version: $JoinHero::VERSION\n");
+  exit;
+}
+##---------------------------------------------------------------------------
+
+##---------------------------------------------------------------------------
+# Podusage
+
+__END__
+
+=head1 AUTHOR
+
+Caleb Hankins - chanki
+
+=head1 NAME
+
+join-hero
+
+=head1 SYNOPSIS
+
+ Oracle DDL parser for scraping PK/FK/Unique Key metadata describing table joins
+
+ Options:
+  'i|file|inputFilepath=s'       DDL File input file with key info [required]
+  'o|out|outputFilepath=s'       Output filepath for metadata sql [required]
+  'types=s'                      Comma delimited list of application types. Defaults to 'SAMPLE'
+  'marts|martPrefixes=s'         Comma delimited list of prefixes for schema derivation [optional]
+  'u|updateExisting'             Update existing metadata [optional]
+  'd|deleteExisting'             Delete existing metadata [optional]
+  'martTableJoinTableName=s'     Override for MTJ table name [optional]
+  'martCardinalityTableName=s'   Override for Cardinality table name [optional]
+  'commitThreshold=i'            Statements to execute before issuing a commit [optional]
+  'coreFlg=s'                    Set metadata as 'Core' [optional]
+  'version'                      Print version information.
+  'allowUnknownSchema'           Create metadata for entities where the schema could not be determined
+  't|testMode'                   Skip call to create output file(s) but print all of the other information.
+  'v|verbose'                    Print more verbose output.
+  
+  'help'                         Print brief help information.
+  'man'                          Read the manual, includes examples.
+
+=head1 EXAMPLES
+
+# Generate a full_insert.sql file containing SQL commands to update metadata
+join-hero -i './Export/model.ddl' -o './update_sql/full_insert.sql' -v > ./logs/full_insert.log
+
+# Override target tables to research tables, include delete flag for cleanup
+join-hero -i '.\ddl\model.ddl' -o './update_sql/full_update.sql' --martTableJoinTableName 'TEMP_MERGED_MTJ' --martCardinalityTableName 'TEMP_MERGED_MTJ_CARD' -d
+  
+=cut
+##---------------------------------------------------------------------------

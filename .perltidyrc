@@ -2,6 +2,7 @@
 # Uncomment #-st to fully emulate perltidy -pbp
 
 -pbp     # Start with Perl Best Practices
+-nst     # Must turn off -st in case -pbp is specified
 -w       # Show all warnings
 -iob     # Ignore old breakpoints
 -l=120   # 120 characters per line

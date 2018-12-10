@@ -1,135 +1,56 @@
-#!/usr/bin/perl
-#/*#########################################################################################
-#                       (C) Copyright Acxiom Corporation 2018
+############################################################################################
+#                       (C) Copyright 2018 Acxiom LLC
 #                               All Rights Reserved.
 ############################################################################################
 #
-# Script: join_hero.pl
+# Script: JoinHero.pm
 # Author: Caleb Hankins - chanki
-# Date:   2018-03-27
+# Date:   2018-12-10
 #
-# Purpose: Transform DDL that describes keys (foreign, primary and unique)
-# into join metadata that can be ingested by various and sundry downstream processes
-# to link relational tables and views
+# Purpose: Oracle DDL parser for scraping PK/FK/Unique Key metadata describing table joins
 #
 ############################################################################################
 # MODIFICATION HISTORY
-##-----------------------------------------------------------------------------------------
+##----------------------------------------------------------------------------------------
 # DATE        PROGRAMMER                   DESCRIPTION
-##-----------------------------------------------------------------------------------------
-# 2018-03-27  Caleb Hankins - chanki       Initial Copy
-###########################################################################################*/
+##----------------------------------------------------------------------------------------
+# 2018-12-10  Caleb Hankins - chanki       Initial Copy
+############################################################################################
 
-use strict;
+package JoinHero;
+
 use warnings;
-use IO::Handle;            # Supply object methods for I/O handles
-use Getopt::Long;          # Extended processing of command line options
-use Pod::Usage;            # Print a usage message from embedded pod documentation
+use strict;
 use File::Glob ':glob';    # Perl extension for BSD glob routine
-
 use Data::Dumper;
 use File::Path qw(make_path);
+no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smartmatch warnings
 
-# turn on auto-flush / hot pipes
-STDOUT->autoflush(1);
-STDERR->autoflush(1);
+##--------------------------------------------------------------------------
+# Version info
+our $VERSION = '0.0.1';
+##--------------------------------------------------------------------------
 
-my $inputFilepath                     = '';
-my $updateExisting                    = '';
-my $deleteExisting                    = '';
-my $types                             = '';
-my $marts                             = '';
-my @supportedTypes                    = ('ADOBE', 'REDPOINT', 'IBM');
-my @supportedMarts                    = ('CMP_DM', 'ITA', 'PA');
-my $outputFilepath                    = 'join_us.sql';
-my $martTableJoinTableName            = 'MART_TABLE_JOIN';
-my $martTableJoinCardinalityTableName = 'MART_TABLE_JOIN_CARDINALITY';
-my $commitThreshold                   = 1000;
-my $coreFlg                           = 'Y';
-my $testMode                          = '';
-my $verbose                           = '';
+##--------------------------------------------------------------------------
+# Create logger object
+use JoinHero::Logger;
+our $logger = JoinHero::Logger->new() or die "Cannot retrieve Logger object\n";
+##--------------------------------------------------------------------------
 
-my $rc = GetOptions(
-  'i|file|inputFilepath=s'              => \$inputFilepath,
-  'o|out|outputFilepath=s'              => \$outputFilepath,
-  'types=s'                             => \$types,
-  'marts=s'                             => \$marts,
-  'u|updateExisting'                    => \$updateExisting,
-  'd|deleteExisting'                    => \$deleteExisting,
-  'martTableJoinTableName=s'            => \$martTableJoinTableName,
-  'martTableJoinCardinalityTableName=s' => \$martTableJoinCardinalityTableName,
-  'commitThreshold=i'                   => \$commitThreshold,
-  'coreFlg=s'                           => \$coreFlg,
-
-  't|testMode' => \$testMode,
-  'v|verbose'  => \$verbose,
-
-  #pod2usage variables
-  'help' => sub { pod2usage(1); },
-  'man'  => sub { pod2usage(-exitstatus => 0, -verbose => 2); }
-);
-
-sanityCheckOptions();
-
-# Load up DDL source file
-my $inputFileContents = openAndLoadFile($inputFilepath);
-
-# Parse DDL Source file into usable components
-my ($pk, $fk) = getKeyComponents($inputFileContents);
-
-# Use our component list to construct some oracle merge statements
-my $outputFileContents = getOutputSQL($pk, $fk);
-
-# Create file containing SQL statements that can be used to update join metadata
-createExportFile($outputFileContents, $outputFilepath);
-
-exit;
-
-##---------------------------------------------------------------------------
-# Give script options the ol' sanity check
-sub sanityCheckOptions {
-  my $subName  = (caller(0))[3];
-  my $errorCnt = 0;
-
-  if ($types) { @supportedTypes = split(',', $types); }
-  if ($marts) { @supportedMarts = split(',', $marts); }
-  if ('CMP'    ~~ @supportedMarts) { push(@supportedMarts, 'CMP_DM'); }    # Add the long name if short is present
-  if ('CMP_DM' ~~ @supportedMarts) { push(@supportedMarts, 'CMP'); }       # Add the short name if long is present
-  @supportedMarts = getUniqArray(@supportedMarts);
-
-  print("$subName Supported target application types: [" . join(',', @supportedTypes) . "]\n");
-  print("$subName Supported mart prefixes: [" . join(',', @supportedMarts) . "]\n");
-  print("$subName Processing '$inputFilepath', wish me luck!\n");
-
-  $inputFilepath = bsd_glob($inputFilepath);
-  $errorCnt += checkRequiredParm($inputFilepath, 'inputFilepath');
-  $outputFilepath = bsd_glob($outputFilepath);
-  $errorCnt += checkRequiredParm($outputFilepath, 'outputFilepath');
-
-  # Check for errors before starting processing
-  if ($errorCnt > 0) {
-
-    # Print informational message to standard output
-    print(  "$subName There were ["
-          . $errorCnt
-          . "] error messages detected while sanity checking options. Script is halting.");
-
-    # Exit with a non-zero code and print usage
-    pod2usage(10);
-  } ## end if ($errorCnt > 0)
-
-  return;
-} ## end sub sanityCheckOptions
-##---------------------------------------------------------------------------
+##--------------------------------------------------------------------------
+# Verbosity
+our $verbose = 0;    # Default to not verbose
+##--------------------------------------------------------------------------
 
 ##---------------------------------------------------------------------------
 # Capture and save valuable components in the supplied DDL file
 sub getKeyComponents {
-  my ($rawDDL) = @_;
-  my $subName = (caller(0))[3];
+  my ($rawDDL, $supportedMartsRef) = @_;
+  my @supportedMarts = @$supportedMartsRef;
+  my $subName        = (caller(0))[3];
 
   # Describe what things look like
-  my $validOracleObjectCharacterClasses = q{"a-zA-Z0-9_\$\@};                              # Oracle object
+  my $validOracleObjectCharacterClasses = q{".a-zA-Z0-9_\$\@};                             # Oracle object
   my $validOracleFieldListClasses       = $validOracleObjectCharacterClasses . q{\,\s};    # Field list
   my $captureOracleObject               = qq{([$validOracleObjectCharacterClasses]+)};     # Capture Oracle objects
   my $captureFieldList                  = qq{([$validOracleFieldListClasses]+)};           # Capture Oracle field lists
@@ -148,7 +69,7 @@ sub getKeyComponents {
   $fkComponentsRegEx .= q{[\s]*.*?[\s]*\([\s]*};
   $fkComponentsRegEx .= $captureFieldList;                                                 # Cap 5, from field list
   $fkComponentsRegEx .= q{[\s]*\)[\s]*;};
-  if ($verbose) { print("$subName Parsing foreign keys using RegEx: $fkComponentsRegEx\n"); }
+  if ($verbose) { $logger->info("$subName Parsing foreign keys using RegEx: $fkComponentsRegEx\n"); }
 
   # Capture PK / Unique components
   my $pkComponentsRegEx = q{};
@@ -161,7 +82,7 @@ sub getKeyComponents {
   $pkComponentsRegEx .= q{[\s]*\([\s]*};
   $pkComponentsRegEx .= $captureFieldList;                                                 # Cap 4, field list
   $pkComponentsRegEx .= q{[\s]*\)[\s]*;};
-  if ($verbose) { print("$subName Parsing primary and unique keys using RegEx: $pkComponentsRegEx\n"); }
+  if ($verbose) { $logger->info("$subName Parsing primary and unique keys using RegEx: $pkComponentsRegEx\n"); }
 
   my @keyDDL = $rawDDL =~ /$keyDDLRegEx/gms;    # Save off each Key DDL statement into its own array element
 
@@ -183,6 +104,9 @@ sub getKeyComponents {
         # Uppercase field list
         $fieldList = uc($fieldList);
 
+        # Clean up names
+        $table = getCleanedObjectName($table);
+
         # Save components
         $pkComponents->{$pkName}->{'pkName'}    = $pkName;
         $pkComponents->{$pkName}->{'table'}     = getTableName($table);
@@ -195,7 +119,7 @@ sub getKeyComponents {
     } ## end if ($pk =~ /$pkComponentsRegEx/gms)
   } ## end for my $pk (@keyDDL)
 
-  if ($verbose) { print("$subName Primary and unique key components:\n" . Dumper($pkComponents)); }
+  if ($verbose) { $logger->info("$subName Primary and unique key components:\n" . Dumper($pkComponents)); }
 
   # Munge our FKs into components that we can use
   my $fkComponents = {};    # Hash ref to hold our broken out component parts
@@ -218,6 +142,10 @@ sub getKeyComponents {
         $fromFieldList = uc($fromFieldList);
         $toFieldList   = uc($toFieldList);
 
+        # Clean up names
+        $fromTable = getCleanedObjectName($fromTable);
+        $toTable   = getCleanedObjectName($toTable);
+
         # Save components
         $fkComponents->{$fkName}->{'fkName'}        = $fkName;
         $fkComponents->{$fkName}->{'fromTable'}     = getTableName($fromTable);
@@ -230,8 +158,8 @@ sub getKeyComponents {
         @{$fkComponents->{$fkName}->{'toFields'}}   = split(',', $toFieldList);
 
         # Munge and set schema names using the table prefix
-        my $fromSchema = getSchemaName($fkComponents->{$fkName}->{'fromTable'});
-        my $toSchema   = getSchemaName($fkComponents->{$fkName}->{'toTable'});
+        my $fromSchema = getSchemaName($fromTable, \@supportedMarts);
+        my $toSchema   = getSchemaName($toTable,   \@supportedMarts);
 
         # If we got one schema but not the other, set the empty one using the populated one
         if ($fromSchema && !$toSchema)   { $toSchema   = $fromSchema; }
@@ -244,7 +172,7 @@ sub getKeyComponents {
     } ## end if ($fk =~ /$fkComponentsRegEx/gms)
   } ## end for my $fk (@keyDDL)
 
-  if ($verbose) { print("$subName Foreign keys components:\n" . Dumper($fkComponents)); }
+  if ($verbose) { $logger->info("$subName Foreign keys components:\n" . Dumper($fkComponents)); }
 
   return ($pkComponents, $fkComponents);
 } ## end sub getKeyComponents
@@ -253,19 +181,24 @@ sub getKeyComponents {
 ##--------------------------------------------------------------------------
 # Use component hash refs to generate update SQL
 sub getOutputSQL {
-  my ($pkComponents, $fkComponents) = @_;
+  my ($getOutputSQLParams) = @_;
   my $subName = (caller(0))[3];
   my $outputSQL;
   my $uncommittedTransactions = 0;
 
+  # Alias our params for easier use
+  my $pkComponents    = $getOutputSQLParams->{pkComponents};
+  my $fkComponents    = $getOutputSQLParams->{fkComponents};
+  my $commitThreshold = $getOutputSQLParams->{commitThreshold};
+
   for my $key (sort keys %{$fkComponents}) {
-    my $joinSQL = getJoinSQL($pkComponents, $fkComponents, $key);
+    my $joinSQL = getJoinSQL($key, $getOutputSQLParams);
     if ($joinSQL) {
       $outputSQL .= $joinSQL;
       $uncommittedTransactions += () = $joinSQL =~ /;/g;    # Count semicolons to determine transactions added
-      if ($verbose) { print("$subName uncommittedTransactions: $uncommittedTransactions\n"); }
+      if ($verbose) { $logger->info("$subName uncommittedTransactions: $uncommittedTransactions\n"); }
       if ($uncommittedTransactions > $commitThreshold) {    # If we've reached the threshold, commit and reset count
-        print("$subName Reached transaction threshold, inserting commit\n");
+        $logger->info("$subName Reached transaction threshold, inserting commit\n");
         $outputSQL .= "\ncommit;\n";
         $uncommittedTransactions = 0;
       }
@@ -281,13 +214,25 @@ sub getOutputSQL {
 ##--------------------------------------------------------------------------
 # Use component hash refs to generate merge SQL
 sub getJoinSQL {
-  my ($pkComponents, $fkComponents, $fkKey) = @_;
+  my ($fkKey, $getJoinSQLParams) = @_;
   my $subName   = (caller(0))[3];
   my $outputSQL = '';
 
-  if ($verbose) { print("$subName Processing:$fkComponents->{$fkKey}->{fkName}...\n"); }
+  # Alias our params for easier use
+  my $pkComponents             = $getJoinSQLParams->{pkComponents};
+  my $fkComponents             = $getJoinSQLParams->{fkComponents};
+  my $deleteExisting           = $getJoinSQLParams->{deleteExisting};
+  my $updateExisting           = $getJoinSQLParams->{updateExisting};
+  my $martTableJoinTableName   = $getJoinSQLParams->{martTableJoinTableName};
+  my $martCardinalityTableName = $getJoinSQLParams->{martCardinalityTableName};
+  my $coreFlg                  = $getJoinSQLParams->{coreFlg};
+  my @supportedTypes           = @{$getJoinSQLParams->{supportedTypes}};
+  my @supportedMarts           = @{$getJoinSQLParams->{supportedMarts}};
+  my $allowUnknownSchema       = $getJoinSQLParams->{allowUnknownSchema};
+
+  if ($verbose) { $logger->info("$subName Processing:$fkComponents->{$fkKey}->{fkName}...\n"); }
   for my $type (@supportedTypes) {
-    if ($verbose) { print("$subName Processing:$fkComponents->{$fkKey}->{fkName} for type $type...\n"); }
+    if ($verbose) { $logger->info("$subName Processing:$fkComponents->{$fkKey}->{fkName} for type $type...\n"); }
 
     # App specific init
     my $fromSchema;
@@ -311,23 +256,28 @@ sub getJoinSQL {
     if ($type ne 'ADOBE') {
       if ($toTable eq 'RECIPIENT' || $fromTable eq 'RECIPIENT') {
         if ($verbose) {
-          print("$subName Non-Adobe type ($type) targeting a RECIPIENT table ($toTable to $fromTable), skipping\n");
+          $logger->info(
+                    "$subName Non-Adobe type ($type) targeting a RECIPIENT table ($toTable to $fromTable), skipping\n");
         }
         next;
       } ## end if ($toTable eq 'RECIPIENT'...)
     } ## end if ($type ne 'ADOBE')
 
-    # Validate schema, exit early if invalid
+    # Validate schema, set default if empty
     if (!defined($toSchema) || !defined($fromSchema)) {
-      if ($verbose) { print("$subName Missing 1 or more schema, skipping\n"); }
-      next;
-    }
-    elsif ($toSchema ne $fromSchema) {    # Exit early if the schema don't match, no cross mart joins
+      if ($verbose) { $logger->info("$subName Setting default schema\n"); }
+      $toSchema   = 'UNKNOWN';
+      $fromSchema = 'UNKNOWN';
+      if (!$allowUnknownSchema) { return; }    # Leave early unless we allow UNKNOWN schema
+    } ## end if (!defined($toSchema...))
+
+    # Exit early if the schema don't match, no cross mart joins
+    if ($toSchema ne $fromSchema) {
       if ($verbose) {
-        print("$subName Cross schema ($toSchema to $fromSchema), skipping\n");
+        $logger->info("$subName Cross schema ($toSchema to $fromSchema), skipping\n");
       }
       next;
-    } ## end elsif ($toSchema ne $fromSchema)
+    } ## end if ($toSchema ne $fromSchema)
 
     # Generate MTJ record(s)
     if ($deleteExisting) {
@@ -341,7 +291,7 @@ sub getJoinSQL {
         A.FROM_TABLE = '$fromTable' AND
         A.TO_TABLE = '$toTable';\n};
 
-      if ($verbose) { print("$subName Adding deleteSQLMartTableJoin:\n$deleteSQLMartTableJoin\n"); }
+      if ($verbose) { $logger->info("$subName Adding deleteSQLMartTableJoin:\n$deleteSQLMartTableJoin\n"); }
 
       $outputSQL .= $deleteSQLMartTableJoin;
     } ## end if ($deleteExisting)
@@ -350,7 +300,8 @@ sub getJoinSQL {
     my $i            = 0;     # Setup a loop counter to use for field indexing and numbering
     for my $fkToField (@{$fkComponents->{$fkKey}->{'toFields'}}) {
       if ($verbose) {
-        print("$subName Processing:$fkComponents->{$fkKey}->{fkName} for type $type and toField $fkToField...\n");
+        $logger->info(
+                    "$subName Processing:$fkComponents->{$fkKey}->{fkName} for type $type and toField $fkToField...\n");
       }
       my $fkFromField  = @{$fkComponents->{$fkKey}->{'fromFields'}}[$i];    # Grab the matching from field
       my $fieldJoinOrd = $i + 1;
@@ -447,7 +398,7 @@ sub getJoinSQL {
 
     $mergeSQLMartTableJoin .= ";\n";
 
-    if ($verbose) { print("$subName Adding mergeSQLMartTableJoin:\n$mergeSQLMartTableJoin\n"); }
+    if ($verbose) { $logger->info("$subName Adding mergeSQLMartTableJoin:\n$mergeSQLMartTableJoin\n"); }
 
     $outputSQL .= $mergeSQLMartTableJoin;
 
@@ -457,7 +408,7 @@ sub getJoinSQL {
 
     if ($deleteExisting) {
       my $deleteSQLMartTableJoinCardinality = qq{
-      DELETE FROM $martTableJoinCardinalityTableName A
+      DELETE FROM $martCardinalityTableName A
       WHERE 
         A.TYPE = '$type' AND
         NVL(A.CORE_FLG,'NULL') = '$coreFlg' AND
@@ -467,14 +418,14 @@ sub getJoinSQL {
         A.TO_TABLE = '$toTable';\n};
 
       if ($verbose) {
-        print("$subName Adding deleteSQLMartTableJoinCardinality:\n$deleteSQLMartTableJoinCardinality\n");
+        $logger->info("$subName Adding deleteSQLMartTableJoinCardinality:\n$deleteSQLMartTableJoinCardinality\n");
       }
 
       $outputSQL .= $deleteSQLMartTableJoinCardinality;
     } ## end if ($deleteExisting)
 
     my $mergeSQLMartTableJoinCardinality = qq{
-      MERGE INTO $martTableJoinCardinalityTableName A USING
+      MERGE INTO $martCardinalityTableName A USING
       (
         SELECT
           '$fromSchema' as FROM_SCHEMA,
@@ -513,7 +464,7 @@ sub getJoinSQL {
     $mergeSQLMartTableJoinCardinality .= ";\n";
 
     if ($verbose) {
-      print("$subName Adding mergeSQLMartTableJoinCardinality:\n$mergeSQLMartTableJoinCardinality\n");
+      $logger->info("$subName Adding mergeSQLMartTableJoinCardinality:\n$mergeSQLMartTableJoinCardinality\n");
     }
 
     $outputSQL .= $mergeSQLMartTableJoinCardinality;
@@ -538,7 +489,7 @@ sub getJoinCardinality {
       my @pkFields = sort($pkComponents->{$pkKey}->{'fields'});
       if (@joinFields ~~ @pkFields) {
         $cardinality = 'ONE';
-        if ($verbose) { print("$subName Setting cardinality = '$cardinality'\n"); }
+        if ($verbose) { $logger->info("$subName Setting cardinality = '$cardinality'\n"); }
         last;                  # If we found a key match, leave early
       }
     } ## end if ($join->{"${direction}Table"...})
@@ -549,25 +500,45 @@ sub getJoinCardinality {
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
+#
+sub getCleanedObjectName {
+  my ($objectName) = @_;
+  my $subName = (caller(0))[3];
+  my $cleanedObjectName;
+
+  # If we got a name wrapped in quotes, strip them off but preserve the casing
+  if ($objectName =~ /"/gm) {
+    $cleanedObjectName = stripQuotes($objectName);
+  }
+  else {
+    # Else uppercase and move on
+    $cleanedObjectName = uc($objectName);
+  }
+
+  return $cleanedObjectName;
+} ## end sub getCleanedObjectName
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
 # Derive a table name, apply any digital transformation services needed for translation
 sub getTableName {
   my ($objectName) = @_;
   my $subName = (caller(0))[3];
+  my $tableName;
 
-  # If we got a name wrapped in quotes, strip them off but preserve the casing
-  if ($objectName =~ /"/gm) {
-    $objectName = stripQuotes($objectName);
-  }
-  else {
-    # Else uppercase and move on
-    $objectName = uc($objectName);
+  # If we got a dot in the object name, take the secod half, else take the original
+  if ($objectName =~ /([a-zA-Z0-9_\$\@]*)(\.?)([a-zA-Z0-9_\$\@]*)/) {
+    if   ($2) { $tableName = $3; }
+    else      { $tableName = $objectName; }
   }
 
   # If we got some variant of recipient, just return recipient
-  $objectName =~ /(RECIPIENT)/gms;
-  if ($1 and $1 eq 'RECIPIENT') { $objectName = 'RECIPIENT'; }
+  $tableName =~ /(RECIPIENT)/gms;
+  if ($1 and $1 eq 'RECIPIENT') { $tableName = 'RECIPIENT'; }
 
-  return $objectName;
+  return $tableName;
 } ## end sub getTableName
 ##--------------------------------------------------------------------------
 
@@ -575,24 +546,32 @@ sub getTableName {
 # Derive the schema name using the table name
 # Use the first part of the table name up to the first underscore for the schema name
 sub getSchemaName {
-  my ($tableName) = @_;
+  my ($objectName, $supportedMartsRef) = @_;
+  my @supportedMarts = @$supportedMartsRef;
+  my $schemaName;
 
-  # Take the first token using underscore delimiter
-  my $schemaName = ($tableName =~ /([a-zA-Z0-9]+?)_.*/)[0];
+  # Try to use dot delimiter to carve off a schema name
+  if ($objectName =~ /([a-zA-Z0-9_\$\@]*)(\.?)([a-zA-Z0-9_\$\@]*)/) {
+    if ($2) { $schemaName = $1; }
+    else {    # If we didn't have a dot delimiter, to the use the name up to the first underscore for the schema
 
-  # CMP prefixes are special and actually mean CMP_DM
-  if (defined $schemaName) {
-    if ($schemaName eq 'CMP') { $schemaName = 'CMP_DM'; }
-  }
+      # Take the first token using underscore delimiter
+      $schemaName = ($objectName =~ /([a-zA-Z0-9]+?)_.*/)[0];
 
-  # Check schema is in our whitelist. If not, unset the value
-  if (!($schemaName ~~ @supportedMarts)) { $schemaName = undef; }
+      # CMP prefixes are special and actually mean CMP_DM
+      if (defined $schemaName) {
+        if ($schemaName eq 'CMP') { $schemaName = 'CMP_DM'; }
+      }
+
+      # Check schema is in our whitelist. If not, unset the value
+      if (!($schemaName ~~ @supportedMarts)) { $schemaName = undef; }
+    } ## end else [ if ($2) ]
+  } ## end if ($objectName =~ /([a-zA-Z0-9_\$\@]*)(\.?)([a-zA-Z0-9_\$\@]*)/)
 
   return $schemaName;
 } ## end sub getSchemaName
 ##--------------------------------------------------------------------------
 
-########################### todo, replace these subs below with partnerApps.pm if the cross platform issues are solved
 ##--------------------------------------------------------------------------
 # Return a version of the supplied string, but without any double quote characters
 sub stripQuotes {
@@ -610,7 +589,7 @@ sub openAndLoadFile {
   my $fileContents = '';
 
   # Try to open our file
-  open my $fileHandle, "<", $filename or print("$subName Could not open file '$filename' $!");
+  open my $fileHandle, "<", $filename or $logger->confess("$subName Could not open file '$filename' $!");
 
   # Read file handle data stream into our file variable
   while (defined(my $line = <$fileHandle>)) {
@@ -620,7 +599,8 @@ sub openAndLoadFile {
   close($fileHandle);
 
   if (length($fileContents) <= 0) {
-    print("$subName It appears that nothing was in [$filename] Please check file and see if it meets expectations.");
+    $logger->confess(
+             "$subName It appears that nothing was in [$filename] Please check file and see if it meets expectations.");
   }
 
   return $fileContents;
@@ -642,16 +622,16 @@ sub createExportFile {
 
   # Create the dir if it doesn't already exist
   eval { make_path($filepathParts->{'dirname'}) };
-  print("$subName Could not make directory: $filepathParts->{'dirname'}: $@") if $@;
+  $logger->confess("$subName Could not make directory: $filepathParts->{'dirname'}: $@") if $@;
 
-  print("$subName Attempting creation of file [$exportFileFullName]\n");
+  $logger->info("$subName Attempting creation of file [$exportFileFullName]\n");
   open my $exportFile, q{>}, $exportFileFullName
-    or print("$subName Could not open file: $exportFileFullName: $!\n")
+    or $logger->confess("$subName Could not open file: $exportFileFullName: $!\n")
     ;    # Open file, overwrite if exists, raise error if we run into trouble
   if (!$utfDisabled) { binmode($exportFile, ":encoding(UTF-8)") }
   print $exportFile $fileData;
   close($exportFile);
-  print("$subName Success!\n");
+  $logger->info("$subName Success!\n");
 
   return;
 } ## end sub createExportFile
@@ -665,7 +645,7 @@ sub getFilepathParts {
 
   my ($name, $dirname, $ext);
   eval { ($name, $dirname, $ext) = File::Basename::fileparse($filename, @extList); };
-  print("$subName Could not fileparse '$filename'. Error message from fileparse: '$@'") if $@;
+  $logger->confess("$subName Could not fileparse '$filename'. Error message from fileparse: '$@'") if $@;
 
   return {
           'dirname'  => $dirname,
@@ -698,7 +678,7 @@ sub checkRequiredParm {
 
   # Make sure value is populated
   unless (defined($requiredParmVal) and length($requiredParmVal) > 0) {
-    print("$parentName $errMsg\n");
+    $logger->error("$parentName $errMsg\n");
     $errorCnt++;
   }
 
@@ -706,48 +686,42 @@ sub checkRequiredParm {
 } ## end sub checkRequiredParm
 ##--------------------------------------------------------------------------
 
-##---------------------------------------------------------------------------
-# Podusage
+##--------------------------------------------------------------------------
+# Print sign off message and return a status code
+sub signOff {
+  my (
+      $statusCode,      # Optional $? (statusCode)
+      $inErrorCount,    # Optional supplemental error count if not using logger
+      $inWarnCount      # Optional supplemental warning count if not using logger
+  ) = @_;
+  $statusCode   //= 0;    # Default to 0 if not supplied
+  $inErrorCount //= 0;    # Default to 0 if not supplied
+  $inWarnCount  //= 0;    # Default to 0 if not supplied
+  my $parentName = (caller(1))[3];    # Calling sub name
+  $parentName //= 'main::main';       # Default parentName if we couldn't find one
 
-__END__
+  my $errorCount   = $logger->get_count("ERROR") + $inErrorCount;    # Combine logger's count and the supplied count
+  my $warningCount = $logger->get_count("WARN") + $inWarnCount;      # Combine logger's count and the supplied count
 
-=head1 AUTHOR
+  if (!$statusCode && $errorCount) { $statusCode += $errorCount; }   # Set non-zero rc if we detected logger errors
+  if ($statusCode && !$errorCount) { $errorCount++; }                # Increment error counter if logger didn't catch it
 
-Caleb Hankins - chanki
+  # If we got a value >255, assume we were passed a wait call exit status and right shift by 8 to get the return code
+  my $statusCodeSmall = $statusCode;
+  if ($statusCode > 255) { $statusCodeSmall = $statusCode >> 8; }
+  if ($statusCode > 0 && ($statusCodeSmall % 256) == 0) { $statusCodeSmall = 1; }
 
-=head1 NAME
+  # Generate an informative sign off message for the log
+  my $signOffMsg = "$parentName Exiting with return code of $statusCodeSmall";
+  $signOffMsg .= ($statusCode != $statusCodeSmall) ? ", wait return code of $statusCode. " : ". ";
+  $signOffMsg .= "$errorCount error(s), ";
+  $signOffMsg .= "$warningCount warning(s) reported.";
 
-join_hero.pl
+  if   ($statusCode) { $logger->error($signOffMsg); }    # If we had a bad return code, log an error
+  else               { $logger->info($signOffMsg); }     # Else log the sign off message as info
 
-=head1 SYNOPSIS
+  return $statusCodeSmall;
+} ## end sub signOff
+##--------------------------------------------------------------------------
 
-join_hero.pl - Transform DDL that describes keys (foreign, primary and unique) into join metadata that can be ingested by various and sundry downstream processes to link relational tables and views
-
- Options:
-  'i|file|inputFilepath=s'              DDL File input file with key info [required]
-  'o|out|outputFilepath=s'              Output filepath for metadata [optional]
-  'types=s'                             Application type [optional]
-  'marts=s'                             Data mart prefix [optional]
-  'u|updateExisting'                    Update existing metadata [optional]
-  'd|deleteExisting'                    Delete existing metadata [optional]
-  'martTableJoinTableName=s'            Override for MTJ table name [optional]
-  'martTableJoinCardinalityTableName=s' Override for MTJ Cardinality table nam[optional]
-  'commitThreshold=i'                   Statements to execute before issuing a commit [optional]
-  'coreFlg=s'                           Set metadata as 'Core' [optional]
-
-  't|testMode'
-  'v|verbose'
-  
-  --help  Print brief help information.
-  --man   Read the manual, includes examples.
-
-=head1 EXAMPLES
-
-# Generate a full_insert.sql file containing SQL commands to update metadata
-perl join_hero.pl -i './Export/17.4 Export - FKs and PKs.ddl' -o './update_sql/full_insert.sql' -v > ./logs/full_insert.log
-
-# Override target tables to research tables, include delete flag for cleanup
-perl join_hero.pl -i '.\ddl\Campaign_Data_Mart.ddl' -o './update_sql/full_update.sql' > ./logs/full_update.log --martTableJoinTableName 'TEMP_MERGED_MTJ' --martTableJoinCardinalityTableName 'TEMP_MERGED_MTJ_CARD' -d
-  
-=cut
-##---------------------------------------------------------------------------
+1;
