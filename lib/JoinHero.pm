@@ -1,126 +1,49 @@
-#!/usr/bin/perl
-#/*#########################################################################################
-#                       (C) Copyright Acxiom Corporation 2018
+############################################################################################
+#                       (C) Copyright 2018 Acxiom LLC
 #                               All Rights Reserved.
 ############################################################################################
 #
-# Script: join_hero.pl
+# Script: JoinHero.pm
 # Author: Caleb Hankins - chanki
-# Date:   2018-03-27
+# Date:   2018-12-10
 #
-# Purpose: Transform DDL that describes keys (foreign, primary and unique)
-# into join metadata that can be ingested by various and sundry downstream processes
-# to link relational tables and views
+# Purpose: Oracle DDL parser for scraping PK/FK/Unique Key metadata describing table joins
 #
 ############################################################################################
 # MODIFICATION HISTORY
-##-----------------------------------------------------------------------------------------
+##----------------------------------------------------------------------------------------
 # DATE        PROGRAMMER                   DESCRIPTION
-##-----------------------------------------------------------------------------------------
-# 2018-03-27  Caleb Hankins - chanki       Initial Copy
-###########################################################################################*/
+##----------------------------------------------------------------------------------------
+# 2018-12-10  Caleb Hankins - chanki       Initial Copy
+############################################################################################
 
-use strict;
+package JoinHero;
+
 use warnings;
+use strict;
 use IO::Handle;            # Supply object methods for I/O handles
 use Getopt::Long;          # Extended processing of command line options
 use Pod::Usage;            # Print a usage message from embedded pod documentation
 use File::Glob ':glob';    # Perl extension for BSD glob routine
-
 use Data::Dumper;
 use File::Path qw(make_path);
+no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smartmatch warnings
 
-# turn on auto-flush / hot pipes
-STDOUT->autoflush(1);
-STDERR->autoflush(1);
+##--------------------------------------------------------------------------
+# Version info
+our $VERSION = '0.0.1';
+##--------------------------------------------------------------------------
 
-my $inputFilepath                     = '';
-my $updateExisting                    = '';
-my $deleteExisting                    = '';
-my $types                             = '';
-my $marts                             = '';
-my @supportedTypes                    = ('ADOBE', 'REDPOINT', 'IBM');
-my @supportedMarts                    = ('CMP_DM', 'ITA', 'PA');
-my $outputFilepath                    = 'join_us.sql';
-my $martTableJoinTableName            = 'MART_TABLE_JOIN';
-my $martTableJoinCardinalityTableName = 'MART_TABLE_JOIN_CARDINALITY';
-my $commitThreshold                   = 1000;
-my $coreFlg                           = 'Y';
-my $testMode                          = '';
-my $verbose                           = '';
+##--------------------------------------------------------------------------
+# Create logger object
+use JoinHero::Logger;
+our $logger = JoinHero::Logger->new() or die "Cannot retrieve Logger object\n";
+##--------------------------------------------------------------------------
 
-my $rc = GetOptions(
-  'i|file|inputFilepath=s'              => \$inputFilepath,
-  'o|out|outputFilepath=s'              => \$outputFilepath,
-  'types=s'                             => \$types,
-  'marts=s'                             => \$marts,
-  'u|updateExisting'                    => \$updateExisting,
-  'd|deleteExisting'                    => \$deleteExisting,
-  'martTableJoinTableName=s'            => \$martTableJoinTableName,
-  'martTableJoinCardinalityTableName=s' => \$martTableJoinCardinalityTableName,
-  'commitThreshold=i'                   => \$commitThreshold,
-  'coreFlg=s'                           => \$coreFlg,
-
-  't|testMode' => \$testMode,
-  'v|verbose'  => \$verbose,
-
-  #pod2usage variables
-  'help' => sub { pod2usage(1); },
-  'man'  => sub { pod2usage(-exitstatus => 0, -verbose => 2); }
-);
-
-sanityCheckOptions();
-
-# Load up DDL source file
-my $inputFileContents = openAndLoadFile($inputFilepath);
-
-# Parse DDL Source file into usable components
-my ($pk, $fk) = getKeyComponents($inputFileContents);
-
-# Use our component list to construct some oracle merge statements
-my $outputFileContents = getOutputSQL($pk, $fk);
-
-# Create file containing SQL statements that can be used to update join metadata
-createExportFile($outputFileContents, $outputFilepath);
-
-exit;
-
-##---------------------------------------------------------------------------
-# Give script options the ol' sanity check
-sub sanityCheckOptions {
-  my $subName  = (caller(0))[3];
-  my $errorCnt = 0;
-
-  if ($types) { @supportedTypes = split(',', $types); }
-  if ($marts) { @supportedMarts = split(',', $marts); }
-  if ('CMP'    ~~ @supportedMarts) { push(@supportedMarts, 'CMP_DM'); }    # Add the long name if short is present
-  if ('CMP_DM' ~~ @supportedMarts) { push(@supportedMarts, 'CMP'); }       # Add the short name if long is present
-  @supportedMarts = getUniqArray(@supportedMarts);
-
-  print("$subName Supported target application types: [" . join(',', @supportedTypes) . "]\n");
-  print("$subName Supported mart prefixes: [" . join(',', @supportedMarts) . "]\n");
-  print("$subName Processing '$inputFilepath', wish me luck!\n");
-
-  $inputFilepath = bsd_glob($inputFilepath);
-  $errorCnt += checkRequiredParm($inputFilepath, 'inputFilepath');
-  $outputFilepath = bsd_glob($outputFilepath);
-  $errorCnt += checkRequiredParm($outputFilepath, 'outputFilepath');
-
-  # Check for errors before starting processing
-  if ($errorCnt > 0) {
-
-    # Print informational message to standard output
-    print(  "$subName There were ["
-          . $errorCnt
-          . "] error messages detected while sanity checking options. Script is halting.");
-
-    # Exit with a non-zero code and print usage
-    pod2usage(10);
-  } ## end if ($errorCnt > 0)
-
-  return;
-} ## end sub sanityCheckOptions
-##---------------------------------------------------------------------------
+##--------------------------------------------------------------------------
+# Verbosity
+our $verbose = 0;    # Default to not verbose
+##--------------------------------------------------------------------------
 
 ##---------------------------------------------------------------------------
 # Capture and save valuable components in the supplied DDL file
@@ -592,7 +515,6 @@ sub getSchemaName {
 } ## end sub getSchemaName
 ##--------------------------------------------------------------------------
 
-########################### todo, replace these subs below with partnerApps.pm if the cross platform issues are solved
 ##--------------------------------------------------------------------------
 # Return a version of the supplied string, but without any double quote characters
 sub stripQuotes {
@@ -706,48 +628,4 @@ sub checkRequiredParm {
 } ## end sub checkRequiredParm
 ##--------------------------------------------------------------------------
 
-##---------------------------------------------------------------------------
-# Podusage
-
-__END__
-
-=head1 AUTHOR
-
-Caleb Hankins - chanki
-
-=head1 NAME
-
-join_hero.pl
-
-=head1 SYNOPSIS
-
-join_hero.pl - Transform DDL that describes keys (foreign, primary and unique) into join metadata that can be ingested by various and sundry downstream processes to link relational tables and views
-
- Options:
-  'i|file|inputFilepath=s'              DDL File input file with key info [required]
-  'o|out|outputFilepath=s'              Output filepath for metadata [optional]
-  'types=s'                             Application type [optional]
-  'marts=s'                             Data mart prefix [optional]
-  'u|updateExisting'                    Update existing metadata [optional]
-  'd|deleteExisting'                    Delete existing metadata [optional]
-  'martTableJoinTableName=s'            Override for MTJ table name [optional]
-  'martTableJoinCardinalityTableName=s' Override for MTJ Cardinality table nam[optional]
-  'commitThreshold=i'                   Statements to execute before issuing a commit [optional]
-  'coreFlg=s'                           Set metadata as 'Core' [optional]
-
-  't|testMode'
-  'v|verbose'
-  
-  --help  Print brief help information.
-  --man   Read the manual, includes examples.
-
-=head1 EXAMPLES
-
-# Generate a full_insert.sql file containing SQL commands to update metadata
-perl join_hero.pl -i './Export/17.4 Export - FKs and PKs.ddl' -o './update_sql/full_insert.sql' -v > ./logs/full_insert.log
-
-# Override target tables to research tables, include delete flag for cleanup
-perl join_hero.pl -i '.\ddl\Campaign_Data_Mart.ddl' -o './update_sql/full_update.sql' > ./logs/full_update.log --martTableJoinTableName 'TEMP_MERGED_MTJ' --martTableJoinCardinalityTableName 'TEMP_MERGED_MTJ_CARD' -d
-  
-=cut
-##---------------------------------------------------------------------------
+1;

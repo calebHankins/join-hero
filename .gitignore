@@ -1,12 +1,6 @@
-# Binaries for programs and plugins
 *.bson
 *.dump
 *.exe
-*.exe~
-*.pl~
-*.dll
-*.so
-*.dylib
 *.log
 *.out
 *.pcap
@@ -34,7 +28,7 @@ join_us.sql
 *temp*
 
 
-vendor/pkg
+vendor/
 
 .gopath
 .godeps
@@ -45,9 +39,19 @@ tags
 node_modules
 
 lorem_ipsum_copy.txt
+_build/
+Build
+Build.bat
 
-# Test binary, build with `go test -c`
-*.test
-
-# Output of the go coverage tool, specifically when used with LiteIDE
-*.out
+MANIFEST.bak
+MANIFEST.SKIP.bak
+blib/
+pod2htmd.tmp
+.tidyall.d/
+Makefile
+*.tar
+*.tar.gz
+MYMETA.json
+MYMETA.yml
+pm_to_blib
+JoinHero-*/

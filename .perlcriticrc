@@ -1,0 +1,6 @@
+severity = 4
+
+
+# This is throwing some false positives as perl critic can't tell if a sub us a method or static
+[Subroutines::ProhibitBuiltinHomonyms]
+severity = 3 
