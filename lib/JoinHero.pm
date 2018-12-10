@@ -255,12 +255,15 @@ sub getJoinSQL {
       } ## end if ($toTable eq 'RECIPIENT'...)
     } ## end if ($type ne 'ADOBE')
 
-    # Validate schema, exit early if invalid
+    # Validate schema, set default if empty
     if (!defined($toSchema) || !defined($fromSchema)) {
-      if ($verbose) { $logger->info("$subName Missing 1 or more schema, skipping\n"); }
-      next;
+      if ($verbose) { $logger->info("$subName Setting default schema\n"); }
+      $toSchema = 'UNKNOWN';
+      $fromSchema = 'UNKNOWN';
     }
-    elsif ($toSchema ne $fromSchema) {    # Exit early if the schema don't match, no cross mart joins
+
+    # Exit early if the schema don't match, no cross mart joins
+    if ($toSchema ne $fromSchema) {    
       if ($verbose) {
         $logger->info("$subName Cross schema ($toSchema to $fromSchema), skipping\n");
       }
