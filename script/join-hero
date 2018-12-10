@@ -64,6 +64,9 @@ my $rc = GetOptions(
   't|testMode' => \$testMode,
   'v|verbose'  => \$verbose,
 
+  # Version info
+  'version' => \&logVersionInfo,
+
   #pod2usage variables
   'help' => sub { pod2usage(0); },
   'man'  => sub { pod2usage(-exitstatus => 0, -verbose => 2); }
@@ -98,7 +101,7 @@ my $outputFileContents = JoinHero::getOutputSQL(
 );
 
 # Create file containing SQL statements that can be used to update join metadata
-JoinHero::createExportFile($outputFileContents, $outputFilepath);
+if (!$testMode) { JoinHero::createExportFile($outputFileContents, $outputFilepath); }
 
 exit;
 
@@ -175,6 +178,15 @@ sub logScriptConfig {
 ##---------------------------------------------------------------------------
 
 ##---------------------------------------------------------------------------
+# Print [Version Information] to log
+sub logVersionInfo {
+  my $subName = (caller(0))[3];
+  $JoinHero::logger->info("$subName join-hero Version: $JoinHero::VERSION\n");
+  exit;
+}
+##---------------------------------------------------------------------------
+
+##---------------------------------------------------------------------------
 # Podusage
 
 __END__
@@ -192,22 +204,22 @@ join-hero
  Oracle DDL parser for scraping PK/FK/Unique Key metadata describing table joins
 
  Options:
-  'i|file|inputFilepath=s'              DDL File input file with key info [required]
-  'o|out|outputFilepath=s'              Output filepath for metadata sql [required]
-  'types=s'                             Comma delimited list of application types. Defaults to 'SAMPLE'
-  'marts|martPrefixes=s'                Comma delimited list of prefixes for schema derivation [optional]
-  'u|updateExisting'                    Update existing metadata [optional]
-  'd|deleteExisting'                    Delete existing metadata [optional]
-  'martTableJoinTableName=s'            Override for MTJ table name [optional]
-  'martCardinalityTableName=s'          Override for Cardinality table name [optional]
-  'commitThreshold=i'                   Statements to execute before issuing a commit [optional]
-  'coreFlg=s'                           Set metadata as 'Core' [optional]
-
-  't|testMode'
-  'v|verbose'
+  'i|file|inputFilepath=s'       DDL File input file with key info [required]
+  'o|out|outputFilepath=s'       Output filepath for metadata sql [required]
+  'types=s'                      Comma delimited list of application types. Defaults to 'SAMPLE'
+  'marts|martPrefixes=s'         Comma delimited list of prefixes for schema derivation [optional]
+  'u|updateExisting'             Update existing metadata [optional]
+  'd|deleteExisting'             Delete existing metadata [optional]
+  'martTableJoinTableName=s'     Override for MTJ table name [optional]
+  'martCardinalityTableName=s'   Override for Cardinality table name [optional]
+  'commitThreshold=i'            Statements to execute before issuing a commit [optional]
+  'coreFlg=s'                    Set metadata as 'Core' [optional]
+  'version'                      Print version information.
+  't|testMode'                   Skip call to create output file(s) but print all of the other information.
+  'v|verbose'                    Print more verbose output.
   
-  --help  Print brief help information.
-  --man   Read the manual, includes examples.
+  help  Print brief help information.
+  man   Read the manual, includes examples.
 
 =head1 EXAMPLES
 
