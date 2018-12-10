@@ -20,7 +20,7 @@ Transform DDL that describes keys (foreign, primary and unique) into join metada
     - [Troubleshooting](#troubleshooting)
   - [Run Without Installing](#run-without-installing)
   - [Usage](#usage)
-    - [Generating Metadata Update SQL Commands](#generating-metadata-update-sql-commands)
+    - [Generating Metadata SQL Commands](#generating-metadata-sql-commands)
   - [Running SQL Commands](#running-sql-commands)
   - [Sample Models](#sample-models)
   - [Exporting DDL from the Datamodel](#exporting-ddl-from-the-datamodel)
@@ -149,11 +149,11 @@ perl -I '.\vendor' .\script\join-hero --help
 join-hero --help
 ```
 
-### Generating Metadata Update SQL Commands
+### Generating Metadata SQL Commands
 
 ```bash
-# Generate a full_insert.sql file containing SQL commands to update metadata
-join-hero -i './model.ddl' -o './update_sql/full_insert.sql' -v
+# Generate a SQL file containing DML commands to update metadata
+join-hero -i './model.ddl' -o './join-hero-out.sql'
 ```
 
 ## Running SQL Commands
