@@ -50,7 +50,7 @@ sub getKeyComponents {
   my $subName        = (caller(0))[3];
 
   # Describe what things look like
-  my $validOracleObjectCharacterClasses = q{"a-zA-Z0-9_\$\@};                              # Oracle object
+  my $validOracleObjectCharacterClasses = q{".a-zA-Z0-9_\$\@};                             # Oracle object
   my $validOracleFieldListClasses       = $validOracleObjectCharacterClasses . q{\,\s};    # Field list
   my $captureOracleObject               = qq{([$validOracleObjectCharacterClasses]+)};     # Capture Oracle objects
   my $captureFieldList                  = qq{([$validOracleFieldListClasses]+)};           # Capture Oracle field lists
@@ -104,6 +104,9 @@ sub getKeyComponents {
         # Uppercase field list
         $fieldList = uc($fieldList);
 
+        # Clean up names
+        $table = getCleanedObjectName($table);
+
         # Save components
         $pkComponents->{$pkName}->{'pkName'}    = $pkName;
         $pkComponents->{$pkName}->{'table'}     = getTableName($table);
@@ -139,6 +142,10 @@ sub getKeyComponents {
         $fromFieldList = uc($fromFieldList);
         $toFieldList   = uc($toFieldList);
 
+        # Clean up names
+        $fromTable = getCleanedObjectName($fromTable);
+        $toTable   = getCleanedObjectName($toTable);
+
         # Save components
         $fkComponents->{$fkName}->{'fkName'}        = $fkName;
         $fkComponents->{$fkName}->{'fromTable'}     = getTableName($fromTable);
@@ -151,8 +158,8 @@ sub getKeyComponents {
         @{$fkComponents->{$fkName}->{'toFields'}}   = split(',', $toFieldList);
 
         # Munge and set schema names using the table prefix
-        my $fromSchema = getSchemaName($fkComponents->{$fkName}->{'fromTable'}, \@supportedMarts);
-        my $toSchema   = getSchemaName($fkComponents->{$fkName}->{'toTable'},   \@supportedMarts);
+        my $fromSchema = getSchemaName($fromTable, \@supportedMarts);
+        my $toSchema   = getSchemaName($toTable,   \@supportedMarts);
 
         # If we got one schema but not the other, set the empty one using the populated one
         if ($fromSchema && !$toSchema)   { $toSchema   = $fromSchema; }
@@ -258,17 +265,17 @@ sub getJoinSQL {
     # Validate schema, set default if empty
     if (!defined($toSchema) || !defined($fromSchema)) {
       if ($verbose) { $logger->info("$subName Setting default schema\n"); }
-      $toSchema = 'UNKNOWN';
+      $toSchema   = 'UNKNOWN';
       $fromSchema = 'UNKNOWN';
     }
 
     # Exit early if the schema don't match, no cross mart joins
-    if ($toSchema ne $fromSchema) {    
+    if ($toSchema ne $fromSchema) {
       if ($verbose) {
         $logger->info("$subName Cross schema ($toSchema to $fromSchema), skipping\n");
       }
       next;
-    } ## end elsif ($toSchema ne $fromSchema)
+    } ## end if ($toSchema ne $fromSchema)
 
     # Generate MTJ record(s)
     if ($deleteExisting) {
@@ -491,25 +498,45 @@ sub getJoinCardinality {
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
+#
+sub getCleanedObjectName {
+  my ($objectName) = @_;
+  my $subName = (caller(0))[3];
+  my $cleanedObjectName;
+
+  # If we got a name wrapped in quotes, strip them off but preserve the casing
+  if ($objectName =~ /"/gm) {
+    $cleanedObjectName = stripQuotes($objectName);
+  }
+  else {
+    # Else uppercase and move on
+    $cleanedObjectName = uc($objectName);
+  }
+
+  return $cleanedObjectName;
+} ## end sub getCleanedObjectName
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
 # Derive a table name, apply any digital transformation services needed for translation
 sub getTableName {
   my ($objectName) = @_;
   my $subName = (caller(0))[3];
+  my $tableName;
 
-  # If we got a name wrapped in quotes, strip them off but preserve the casing
-  if ($objectName =~ /"/gm) {
-    $objectName = stripQuotes($objectName);
-  }
-  else {
-    # Else uppercase and move on
-    $objectName = uc($objectName);
+  # If we got a dot in the object name, take the secod half, else take the original
+  if ($objectName =~ /([a-zA-Z0-9_\$\@]*)(\.?)([a-zA-Z0-9_\$\@]*)/) {
+    if   ($2) { $tableName = $3; }
+    else      { $tableName = $objectName; }
   }
 
   # If we got some variant of recipient, just return recipient
-  $objectName =~ /(RECIPIENT)/gms;
-  if ($1 and $1 eq 'RECIPIENT') { $objectName = 'RECIPIENT'; }
+  $tableName =~ /(RECIPIENT)/gms;
+  if ($1 and $1 eq 'RECIPIENT') { $tableName = 'RECIPIENT'; }
 
-  return $objectName;
+  return $tableName;
 } ## end sub getTableName
 ##--------------------------------------------------------------------------
 
@@ -517,19 +544,27 @@ sub getTableName {
 # Derive the schema name using the table name
 # Use the first part of the table name up to the first underscore for the schema name
 sub getSchemaName {
-  my ($tableName, $supportedMartsRef) = @_;
+  my ($objectName, $supportedMartsRef) = @_;
   my @supportedMarts = @$supportedMartsRef;
+  my $schemaName;
 
-  # Take the first token using underscore delimiter
-  my $schemaName = ($tableName =~ /([a-zA-Z0-9]+?)_.*/)[0];
+  # Try to use dot delimiter to carve off a schema name
+  if ($objectName =~ /([a-zA-Z0-9_\$\@]*)(\.?)([a-zA-Z0-9_\$\@]*)/) {
+    if ($2) { $schemaName = $1; }
+    else {    # If we didn't have a dot delimiter, to the use the name up to the first underscore for the schema
 
-  # CMP prefixes are special and actually mean CMP_DM
-  if (defined $schemaName) {
-    if ($schemaName eq 'CMP') { $schemaName = 'CMP_DM'; }
-  }
+      # Take the first token using underscore delimiter
+      $schemaName = ($objectName =~ /([a-zA-Z0-9]+?)_.*/)[0];
 
-  # Check schema is in our whitelist. If not, unset the value
-  if (!($schemaName ~~ @supportedMarts)) { $schemaName = undef; }
+      # CMP prefixes are special and actually mean CMP_DM
+      if (defined $schemaName) {
+        if ($schemaName eq 'CMP') { $schemaName = 'CMP_DM'; }
+      }
+
+      # Check schema is in our whitelist. If not, unset the value
+      if (!($schemaName ~~ @supportedMarts)) { $schemaName = undef; }
+    } ## end else [ if ($2) ]
+  } ## end if ($objectName =~ /([a-zA-Z0-9_\$\@]*)(\.?)([a-zA-Z0-9_\$\@]*)/)
 
   return $schemaName;
 } ## end sub getSchemaName
