@@ -103,7 +103,11 @@ my $outputFileContents = JoinHero::getOutputSQL(
 # Create file containing SQL statements that can be used to update join metadata
 if (!$testMode) { JoinHero::createExportFile($outputFileContents, $outputFilepath); }
 
-exit;
+##---------------------------------------------------------------------------
+END {
+  exit(JoinHero::signOff($?));
+}
+##---------------------------------------------------------------------------
 
 ##---------------------------------------------------------------------------
 # Give script options the ol' sanity check

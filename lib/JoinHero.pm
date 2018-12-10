@@ -684,4 +684,42 @@ sub checkRequiredParm {
 } ## end sub checkRequiredParm
 ##--------------------------------------------------------------------------
 
+##--------------------------------------------------------------------------
+# Print sign off message and return a status code
+sub signOff {
+  my (
+      $statusCode,      # Optional $? (statusCode)
+      $inErrorCount,    # Optional supplemental error count if not using logger
+      $inWarnCount      # Optional supplemental warning count if not using logger
+  ) = @_;
+  $statusCode   //= 0;    # Default to 0 if not supplied
+  $inErrorCount //= 0;    # Default to 0 if not supplied
+  $inWarnCount  //= 0;    # Default to 0 if not supplied
+  my $parentName = (caller(1))[3];    # Calling sub name
+  $parentName //= 'main::main';       # Default parentName if we couldn't find one
+
+  my $errorCount   = $logger->get_count("ERROR") + $inErrorCount;    # Combine logger's count and the supplied count
+  my $warningCount = $logger->get_count("WARN") + $inWarnCount;      # Combine logger's count and the supplied count
+
+  if (!$statusCode && $errorCount) { $statusCode += $errorCount; }   # Set non-zero rc if we detected logger errors
+  if ($statusCode && !$errorCount) { $errorCount++; }                # Increment error counter if logger didn't catch it
+
+  # If we got a value >255, assume we were passed a wait call exit status and right shift by 8 to get the return code
+  my $statusCodeSmall = $statusCode;
+  if ($statusCode > 255) { $statusCodeSmall = $statusCode >> 8; }
+  if ($statusCode > 0 && ($statusCodeSmall % 256) == 0) { $statusCodeSmall = 1; }
+
+  # Generate an informative sign off message for the log
+  my $signOffMsg = "$parentName Exiting with return code of $statusCodeSmall";
+  $signOffMsg .= ($statusCode != $statusCodeSmall) ? ", wait return code of $statusCode. " : ". ";
+  $signOffMsg .= "$errorCount error(s), ";
+  $signOffMsg .= "$warningCount warning(s) reported.";
+
+  if   ($statusCode) { $logger->error($signOffMsg); }    # If we had a bad return code, log an error
+  else               { $logger->info($signOffMsg); }     # Else log the sign off message as info
+
+  return $statusCodeSmall;
+} ## end sub signOff
+##--------------------------------------------------------------------------
+
 1;
