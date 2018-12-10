@@ -119,6 +119,9 @@ sub sanityCheckOptions {
   $outputFilepath = bsd_glob($outputFilepath);
   JoinHero::checkRequiredParm($outputFilepath, 'outputFilepath');
 
+  JoinHero::checkRequiredParm($martTableJoinTableName,   'martTableJoinTableName');
+  JoinHero::checkRequiredParm($martCardinalityTableName, 'martCardinalityTableName');
+
   # Set package level variables
   $JoinHero::verbose = $verbose;
 
