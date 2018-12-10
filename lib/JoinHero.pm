@@ -45,8 +45,9 @@ our $verbose = 0;    # Default to not verbose
 ##---------------------------------------------------------------------------
 # Capture and save valuable components in the supplied DDL file
 sub getKeyComponents {
-  my ($rawDDL) = @_;
-  my $subName = (caller(0))[3];
+  my ($rawDDL, $supportedMartsRef) = @_;
+  my @supportedMarts = @$supportedMartsRef;
+  my $subName        = (caller(0))[3];
 
   # Describe what things look like
   my $validOracleObjectCharacterClasses = q{"a-zA-Z0-9_\$\@};                              # Oracle object
@@ -150,8 +151,8 @@ sub getKeyComponents {
         @{$fkComponents->{$fkName}->{'toFields'}}   = split(',', $toFieldList);
 
         # Munge and set schema names using the table prefix
-        my $fromSchema = getSchemaName($fkComponents->{$fkName}->{'fromTable'});
-        my $toSchema   = getSchemaName($fkComponents->{$fkName}->{'toTable'});
+        my $fromSchema = getSchemaName($fkComponents->{$fkName}->{'fromTable'}, \@supportedMarts);
+        my $toSchema   = getSchemaName($fkComponents->{$fkName}->{'toTable'},   \@supportedMarts);
 
         # If we got one schema but not the other, set the empty one using the populated one
         if ($fromSchema && !$toSchema)   { $toSchema   = $fromSchema; }
@@ -173,13 +174,18 @@ sub getKeyComponents {
 ##--------------------------------------------------------------------------
 # Use component hash refs to generate update SQL
 sub getOutputSQL {
-  my ($pkComponents, $fkComponents, $commitThreshold) = @_;
+  my ($getOutputSQLParams) = @_;
   my $subName = (caller(0))[3];
   my $outputSQL;
   my $uncommittedTransactions = 0;
 
+  # Alias our params for easier use
+  my $pkComponents    = $getOutputSQLParams->{pkComponents};
+  my $fkComponents    = $getOutputSQLParams->{fkComponents};
+  my $commitThreshold = $getOutputSQLParams->{commitThreshold};
+
   for my $key (sort keys %{$fkComponents}) {
-    my $joinSQL = getJoinSQL($pkComponents, $fkComponents, $key);
+    my $joinSQL = getJoinSQL($key, $getOutputSQLParams);
     if ($joinSQL) {
       $outputSQL .= $joinSQL;
       $uncommittedTransactions += () = $joinSQL =~ /;/g;    # Count semicolons to determine transactions added
@@ -201,16 +207,20 @@ sub getOutputSQL {
 ##--------------------------------------------------------------------------
 # Use component hash refs to generate merge SQL
 sub getJoinSQL {
-  my (
-      $pkComponents,                      $fkComponents,   $fkKey,
-      $deleteExisting,                    $updateExisting, $martTableJoinTableName,
-      $martTableJoinCardinalityTableName, $coreFlg,        $supportedTypesRef,
-      $supportedMartsRef
-  ) = @_;
-  my @supportedTypes = @$supportedTypesRef;
-  my @supportedMarts = @$supportedMartsRef;
+  my ($fkKey, $getJoinSQLParams) = @_;
   my $subName   = (caller(0))[3];
   my $outputSQL = '';
+
+  # Alias our params for easier use
+  my $pkComponents                      = $getJoinSQLParams->{pkComponents};
+  my $fkComponents                      = $getJoinSQLParams->{fkComponents};
+  my $deleteExisting                    = $getJoinSQLParams->{deleteExisting};
+  my $updateExisting                    = $getJoinSQLParams->{updateExisting};
+  my $martTableJoinTableName            = $getJoinSQLParams->{martTableJoinTableName};
+  my $martTableJoinCardinalityTableName = $getJoinSQLParams->{martTableJoinCardinalityTableName};
+  my $coreFlg                           = $getJoinSQLParams->{coreFlg};
+  my @supportedTypes                    = @{$getJoinSQLParams->{supportedTypes}};
+  my @supportedMarts                    = @{$getJoinSQLParams->{supportedMarts}};
 
   if ($verbose) { $logger->info("$subName Processing:$fkComponents->{$fkKey}->{fkName}...\n"); }
   for my $type (@supportedTypes) {
@@ -238,7 +248,8 @@ sub getJoinSQL {
     if ($type ne 'ADOBE') {
       if ($toTable eq 'RECIPIENT' || $fromTable eq 'RECIPIENT') {
         if ($verbose) {
-          $logger->info("$subName Non-Adobe type ($type) targeting a RECIPIENT table ($toTable to $fromTable), skipping\n");
+          $logger->info(
+                    "$subName Non-Adobe type ($type) targeting a RECIPIENT table ($toTable to $fromTable), skipping\n");
         }
         next;
       } ## end if ($toTable eq 'RECIPIENT'...)
@@ -277,7 +288,8 @@ sub getJoinSQL {
     my $i            = 0;     # Setup a loop counter to use for field indexing and numbering
     for my $fkToField (@{$fkComponents->{$fkKey}->{'toFields'}}) {
       if ($verbose) {
-        $logger->info("$subName Processing:$fkComponents->{$fkKey}->{fkName} for type $type and toField $fkToField...\n");
+        $logger->info(
+                    "$subName Processing:$fkComponents->{$fkKey}->{fkName} for type $type and toField $fkToField...\n");
       }
       my $fkFromField  = @{$fkComponents->{$fkKey}->{'fromFields'}}[$i];    # Grab the matching from field
       my $fieldJoinOrd = $i + 1;
@@ -547,7 +559,8 @@ sub openAndLoadFile {
   close($fileHandle);
 
   if (length($fileContents) <= 0) {
-    $logger->confess("$subName It appears that nothing was in [$filename] Please check file and see if it meets expectations.");
+    $logger->confess(
+             "$subName It appears that nothing was in [$filename] Please check file and see if it meets expectations.");
   }
 
   return $fileContents;

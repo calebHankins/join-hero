@@ -39,9 +39,9 @@ my $updateExisting                    = '';
 my $deleteExisting                    = '';
 my $types                             = '';
 my $marts                             = '';
-my @supportedTypes                    = ('ADOBE', 'REDPOINT', 'IBM');
-my @supportedMarts                    = ('CMP_DM', 'ITA', 'PA');
-my $outputFilepath                    = 'join_us.sql';
+my @supportedTypes                    = ('SAMPLE');
+my @supportedMarts                    = ('SAMPLE');
+my $outputFilepath                    = '';
 my $martTableJoinTableName            = 'MART_TABLE_JOIN';
 my $martTableJoinCardinalityTableName = 'MART_TABLE_JOIN_CARDINALITY';
 my $commitThreshold                   = 1000;
@@ -75,18 +75,23 @@ sanityCheckOptions();
 my $inputFileContents = JoinHero::openAndLoadFile($inputFilepath);
 
 # Parse DDL Source file into usable components
-my ($pk, $fk) = JoinHero::getKeyComponents($inputFileContents);
+my ($pk, $fk) = JoinHero::getKeyComponents($inputFileContents, \@supportedMarts);
 
 # Use our component list to construct some oracle merge statements
 my $outputFileContents = JoinHero::getOutputSQL(
-                                                $pk,                                $fk,
-                                                $commitThreshold,                   $deleteExisting,
-                                                $updateExisting,                    $martTableJoinTableName,
-                                                $martTableJoinCardinalityTableName, $coreFlg,
-                                                \@supportedTypes,                   \@supportedMarts
+                                               {
+                                                pkComponents                      => $pk,
+                                                fkComponents                      => $fk,
+                                                commitThreshold                   => $commitThreshold,
+                                                deleteExisting                    => $deleteExisting,
+                                                updateExisting                    => $updateExisting,
+                                                martTableJoinTableName            => $martTableJoinTableName,
+                                                martTableJoinCardinalityTableName => $martTableJoinCardinalityTableName,
+                                                coreFlg                           => $coreFlg,
+                                                supportedTypes                    => \@supportedTypes,
+                                                supportedMarts                    => \@supportedMarts
+                                               }
 );
-
-# todo, refactor this to use a hash so we can have named params
 
 # Create file containing SQL statements that can be used to update join metadata
 JoinHero::createExportFile($outputFileContents, $outputFilepath);
