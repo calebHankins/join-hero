@@ -228,6 +228,7 @@ sub getJoinSQL {
   my $coreFlg                  = $getJoinSQLParams->{coreFlg};
   my @supportedTypes           = @{$getJoinSQLParams->{supportedTypes}};
   my @supportedMarts           = @{$getJoinSQLParams->{supportedMarts}};
+  my $allowUnknownSchema       = $getJoinSQLParams->{allowUnknownSchema};
 
   if ($verbose) { $logger->info("$subName Processing:$fkComponents->{$fkKey}->{fkName}...\n"); }
   for my $type (@supportedTypes) {
@@ -267,7 +268,8 @@ sub getJoinSQL {
       if ($verbose) { $logger->info("$subName Setting default schema\n"); }
       $toSchema   = 'UNKNOWN';
       $fromSchema = 'UNKNOWN';
-    }
+      if (!$allowUnknownSchema) { return; }    # Leave early unless we allow UNKNOWN schema
+    } ## end if (!defined($toSchema...))
 
     # Exit early if the schema don't match, no cross mart joins
     if ($toSchema ne $fromSchema) {

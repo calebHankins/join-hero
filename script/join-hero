@@ -46,6 +46,7 @@ my $martTableJoinTableName   = 'MART_TABLE_JOIN';
 my $martCardinalityTableName = 'MART_TABLE_JOIN_CARDINALITY';
 my $commitThreshold          = 1000;
 my $coreFlg                  = 'Y';
+my $allowUnknownSchema       = '';
 my $testMode                 = '';
 my $verbose                  = '';
 
@@ -60,6 +61,7 @@ my $rc = GetOptions(
   'martCardinalityTableName=s' => \$martCardinalityTableName,
   'commitThreshold=i'          => \$commitThreshold,
   'coreFlg=s'                  => \$coreFlg,
+  'allowUnknownSchema'         => \$allowUnknownSchema,
 
   't|testMode' => \$testMode,
   'v|verbose'  => \$verbose,
@@ -96,7 +98,8 @@ my $outputFileContents = JoinHero::getOutputSQL(
                                                  martCardinalityTableName => $martCardinalityTableName,
                                                  coreFlg                  => $coreFlg,
                                                  supportedTypes           => \@supportedTypes,
-                                                 supportedMarts           => \@supportedMarts
+                                                 supportedMarts           => \@supportedMarts,
+                                                 allowUnknownSchema       => $allowUnknownSchema
                                                 }
 );
 
@@ -162,10 +165,13 @@ sub logScriptConfig {
   $JoinHero::logger->info("  martTableJoinTableName:  [$martTableJoinTableName]");
   $JoinHero::logger->info("  martCardinalityTableName:[$martCardinalityTableName]");
 
+  $allowUnknownSchema
+    ? $JoinHero::logger->info("  allowUnknownSchema:      [Enabled]")
+    : $JoinHero::logger->info("  allowUnknownSchema:      [Disabled]");
   $updateExisting
     ? $JoinHero::logger->info("  updateExisting:          [Enabled]")
     : $JoinHero::logger->info("  updateExisting:          [Disabled]");
-  $testMode
+  $deleteExisting
     ? $JoinHero::logger->info("  deleteExisting:          [Enabled]")
     : $JoinHero::logger->info("  deleteExisting:          [Disabled]");
 
@@ -219,6 +225,7 @@ join-hero
   'commitThreshold=i'            Statements to execute before issuing a commit [optional]
   'coreFlg=s'                    Set metadata as 'Core' [optional]
   'version'                      Print version information.
+  'allowUnknownSchema'           Create metadata for entities where the schema could not be determined
   't|testMode'                   Skip call to create output file(s) but print all of the other information.
   'v|verbose'                    Print more verbose output.
   
