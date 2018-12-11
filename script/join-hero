@@ -216,7 +216,9 @@ join-hero
  Options:
   'i|file|inputFilepath=s'       DDL File input file with key info [required]
   'o|out|outputFilepath=s'       Output filepath for metadata sql [required]
-  'types=s'                      Comma delimited list of application types. Defaults to 'SAMPLE'
+  'types=s'                      Comma delimited list in the form app[:direction]. Will generate one
+                                  set of metadata per app. If direction is 'REVERSED', 'from' and 'to' 
+                                  direction is flipped. Defaults to 'SAMPLE'.
   'marts|martPrefixes=s'         Comma delimited list of prefixes for schema derivation [optional]
   'u|updateExisting'             Update existing metadata [optional]
   'd|deleteExisting'             Delete existing metadata [optional]

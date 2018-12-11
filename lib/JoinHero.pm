@@ -28,7 +28,7 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smar
 
 ##--------------------------------------------------------------------------
 # Version info
-our $VERSION = '0.0.1';
+our $VERSION = '0.1.0';
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -125,11 +125,11 @@ sub getKeyComponents {
   my $fkComponents = {};    # Hash ref to hold our broken out component parts
   for my $fk (@keyDDL) {
     if ($fk =~ /$fkComponentsRegEx/gms) {
-      my $toTable       = $1;
-      my $toFieldList   = $3;
+      my $fromTable     = $1;
+      my $fromFieldList = $3;
       my $fkName        = $2;
-      my $fromTable     = $4;
-      my $fromFieldList = $5;
+      my $toTable       = $4;
+      my $toFieldList   = $5;
 
       # Store components if we have all the information that we will need
       if ($toTable and $toFieldList and $fkName and $fromTable and $fromFieldList) {
@@ -231,37 +231,35 @@ sub getJoinSQL {
   my $allowUnknownSchema       = $getJoinSQLParams->{allowUnknownSchema};
 
   if ($verbose) { $logger->info("$subName Processing:$fkComponents->{$fkKey}->{fkName}...\n"); }
-  for my $type (@supportedTypes) {
-    if ($verbose) { $logger->info("$subName Processing:$fkComponents->{$fkKey}->{fkName} for type $type...\n"); }
+  for my $typeString (@supportedTypes) {
+
+    # A typeString is optionally a colon delimited string in the format app[:direction]
+    my ($type, $typeDirection) = split(':', $typeString);
+    $typeDirection //= 'NORMAL';    # Default typeDirection to normal if not specified
+    $typeDirection = uc($typeDirection);
+
+    if ($verbose) {
+      $logger->info(
+                 "$subName Processing:$fkComponents->{$fkKey}->{fkName} for type $type, direction $typeDirection...\n");
+    }
 
     # App specific init
     my $fromSchema;
     my $fromTable;
     my $toSchema;
     my $toTable;
-    if ($type eq 'ADOBE') {    # Adobe joins are backwards, flip them
+    if ($typeDirection eq 'REVERSED') {
       $fromSchema = $fkComponents->{$fkKey}->{'toSchema'};
       $fromTable  = $fkComponents->{$fkKey}->{'toTable'};
       $toSchema   = $fkComponents->{$fkKey}->{'fromSchema'};
       $toTable    = $fkComponents->{$fkKey}->{'fromTable'};
-    } ## end if ($type eq 'ADOBE')
+    } ## end if ($typeDirection eq ...)
     else {
       $fromSchema = $fkComponents->{$fkKey}->{'fromSchema'};
       $fromTable  = $fkComponents->{$fkKey}->{'fromTable'};
       $toSchema   = $fkComponents->{$fkKey}->{'toSchema'};
       $toTable    = $fkComponents->{$fkKey}->{'toTable'};
-    } ## end else [ if ($type eq 'ADOBE') ]
-
-    # Check for valid table names, leave early if invalid
-    if ($type ne 'ADOBE') {
-      if ($toTable eq 'RECIPIENT' || $fromTable eq 'RECIPIENT') {
-        if ($verbose) {
-          $logger->info(
-                    "$subName Non-Adobe type ($type) targeting a RECIPIENT table ($toTable to $fromTable), skipping\n");
-        }
-        next;
-      } ## end if ($toTable eq 'RECIPIENT'...)
-    } ## end if ($type ne 'ADOBE')
+    } ## end else [ if ($typeDirection eq ...)]
 
     # Validate schema, set default if empty
     if (!defined($toSchema) || !defined($fromSchema)) {
@@ -309,7 +307,7 @@ sub getJoinSQL {
       # Determine the to and from fields
       my $fromField;
       my $toField;
-      if ($type eq 'ADOBE') {                                               # Adobe joins are backwards
+      if ($typeDirection eq 'REVERSED') {
         $fromField = $fkToField;
         $toField   = $fkFromField;
       }
@@ -403,7 +401,7 @@ sub getJoinSQL {
     $outputSQL .= $mergeSQLMartTableJoin;
 
     # Add cardinality record
-    my $direction = $type eq 'ADOBE' ? 'from' : 'to';
+    my $direction = $typeDirection eq 'REVERSED' ? 'from' : 'to';
     my $cardinality = getJoinCardinality($pkComponents, $fkComponents->{$fkKey}, $direction);
 
     if ($deleteExisting) {
@@ -469,7 +467,7 @@ sub getJoinSQL {
 
     $outputSQL .= $mergeSQLMartTableJoinCardinality;
 
-  } ## end for my $type (@supportedTypes)
+  } ## end for my $typeString (@supportedTypes)
 
   return $outputSQL;
 } ## end sub getJoinSQL
