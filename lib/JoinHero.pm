@@ -28,7 +28,7 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smar
 
 ##--------------------------------------------------------------------------
 # Version info
-our $VERSION = '0.1.0';
+our $VERSION = '0.1.1';
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -46,6 +46,7 @@ our $verbose = 0;    # Default to not verbose
 # Capture and save valuable components in the supplied DDL file
 sub getKeyComponents {
   my ($rawDDL, $supportedMartsRef) = @_;
+  $supportedMartsRef //= [];    # If we didn't get this argument, default to an empty array ref
   my @supportedMarts = @$supportedMartsRef;
   my $subName        = (caller(0))[3];
 
@@ -110,6 +111,7 @@ sub getKeyComponents {
         # Save components
         $pkComponents->{$pkName}->{'pkName'}    = $pkName;
         $pkComponents->{$pkName}->{'table'}     = getTableName($table);
+        $pkComponents->{$pkName}->{'schema'}    = getSchemaName($table, \@supportedMarts);
         $pkComponents->{$pkName}->{'pkType'}    = $pkType;
         $pkComponents->{$pkName}->{'fieldList'} = $fieldList;
 
@@ -477,7 +479,8 @@ sub getJoinSQL {
 # Calculate a given join's cardinality
 sub getJoinCardinality {
   my ($pkComponents, $join, $direction) = @_;
-  my $subName    = (caller(0))[3];
+  my $subName = (caller(0))[3];
+  $direction //= 'to';    # Default direction if we didn't get one
   my @joinFields = sort($join->{"${direction}Fields"});
   my $cardinality = 'MANY';    # Default cardinality to MANY, we'll override later if we have a key match
 
@@ -526,7 +529,7 @@ sub getTableName {
   my $subName = (caller(0))[3];
   my $tableName;
 
-  # If we got a dot in the object name, take the secod half, else take the original
+  # If we got a dot in the object name, take the second half, else take the original
   if ($objectName =~ /([a-zA-Z0-9_\$\@]*)(\.?)([a-zA-Z0-9_\$\@]*)/) {
     if   ($2) { $tableName = $3; }
     else      { $tableName = $objectName; }
@@ -545,6 +548,7 @@ sub getTableName {
 # Use the first part of the table name up to the first underscore for the schema name
 sub getSchemaName {
   my ($objectName, $supportedMartsRef) = @_;
+  $supportedMartsRef //= [];    # If we didn't get this argument, default to an empty array ref
   my @supportedMarts = @$supportedMartsRef;
   my $schemaName;
 
