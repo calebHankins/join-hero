@@ -7,3 +7,6 @@ perl:
 os: 
   - windows
   - linux
+
+env:
+  - TEST_AUTHOR=1
