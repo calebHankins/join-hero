@@ -28,7 +28,7 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smar
 
 ##--------------------------------------------------------------------------
 # Version info
-our $VERSION = '0.1.1';
+our $VERSION = '0.1.2';
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -138,7 +138,7 @@ sub getKeyComponents {
 
         # Remove any whitespace characters from the field lists
         $fromFieldList =~ s/\s+//g;
-        $toFieldList =~ s/\s+//g;
+        $toFieldList   =~ s/\s+//g;
 
         # Uppercase field lists
         $fromFieldList = uc($fromFieldList);
@@ -403,7 +403,7 @@ sub getJoinSQL {
     $outputSQL .= $mergeSQLMartTableJoin;
 
     # Add cardinality record
-    my $direction = $typeDirection eq 'REVERSED' ? 'from' : 'to';
+    my $direction   = $typeDirection eq 'REVERSED' ? 'from' : 'to';
     my $cardinality = getJoinCardinality($pkComponents, $fkComponents->{$fkKey}, $direction);
 
     if ($deleteExisting) {

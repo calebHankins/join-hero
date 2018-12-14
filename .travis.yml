@@ -10,7 +10,6 @@ before_install:
   - cpanm Test::Perl::Critic
   - cpanm Perl::Tidy
 
-
 os: 
   - linux
 
