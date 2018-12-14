@@ -5,8 +5,12 @@ perl:
   - "5.10"
 
 before_install:
+  - eval $(curl https://travis-perl.github.io/init) --auto
   - cpanm Perl::Tidy
-  - cpanm -v Perl::Critic
+  - cpanm Perl::Critic
+  - cpanm Test::Perl::Critic
+  - cpanm Test::Code::TidyAll
+
 
 os: 
   - linux
