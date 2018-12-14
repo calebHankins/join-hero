@@ -95,3 +95,6 @@ scratch
 
 # Avoid assets only needed for readme
 \bimg
+
+# Skip Travis Continuous Integration configuration
+^\.travis\.yml$
