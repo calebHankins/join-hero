@@ -3,6 +3,9 @@ _Not the hero we wanted, but the one that we deserved._
 
 Transform DDL that describes keys (foreign, primary and unique) into join metadata that can be ingested by various and sundry downstream processes to link relational tables and views.
 
+[![Master Build](https://img.shields.io/travis/calebHankins/join-hero/master.svg?label=Master)](https://travis-ci.org/calebHankins/join-hero?branch=master)
+[![Develop Build](https://img.shields.io/travis/calebHankins/join-hero/develop.svg?label=Develop)](https://travis-ci.org/calebHankins/join-hero?branch=develop)
+
 - [JOIN-HERO](#join-hero)
   - [Note for Windows Users](#note-for-windows-users)
   - [Installation](#installation)
