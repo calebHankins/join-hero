@@ -83,6 +83,7 @@
 \bjoin-hero-[\d\.\_]+
 \bJoinHero-[\d\.\_]+
 \bJoinHero-.*.gz$
+\bJoinHero-v.*
 
 # Avoid scratch dirs
 scratch
