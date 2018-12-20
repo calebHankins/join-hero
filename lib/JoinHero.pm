@@ -28,7 +28,7 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smar
 
 ##--------------------------------------------------------------------------
 # Version info
-our $VERSION = '0.1.3';
+our $VERSION = '0.1.4';
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -181,7 +181,7 @@ sub getKeyComponents {
 ##---------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
-# Use component hash refs to generate update SQL
+# Use component hash refs to generate SQL to update the MTJ(C) tables
 sub getOutputSQL {
   my ($getOutputSQLParams) = @_;
   my $subName = (caller(0))[3];
@@ -192,6 +192,7 @@ sub getOutputSQL {
   my $pkComponents    = $getOutputSQLParams->{pkComponents};
   my $fkComponents    = $getOutputSQLParams->{fkComponents};
   my $commitThreshold = $getOutputSQLParams->{commitThreshold};
+  $commitThreshold //= 1000;    # Default if not supplied
 
   for my $key (sort keys %{$fkComponents}) {
     my $joinSQL = getJoinSQL($key, $getOutputSQLParams);
@@ -214,7 +215,7 @@ sub getOutputSQL {
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
-# Use component hash refs to generate merge SQL
+# Use component hash refs to generate merge SQL for a particular join
 sub getJoinSQL {
   my ($fkKey, $getJoinSQLParams) = @_;
   my $subName   = (caller(0))[3];
@@ -228,9 +229,20 @@ sub getJoinSQL {
   my $martTableJoinTableName   = $getJoinSQLParams->{martTableJoinTableName};
   my $martCardinalityTableName = $getJoinSQLParams->{martCardinalityTableName};
   my $coreFlg                  = $getJoinSQLParams->{coreFlg};
-  my @supportedTypes           = @{$getJoinSQLParams->{supportedTypes}};
-  my @supportedMarts           = @{$getJoinSQLParams->{supportedMarts}};
   my $allowUnknownSchema       = $getJoinSQLParams->{allowUnknownSchema};
+  my @supportedTypes;
+  my @supportedMarts;
+
+  # Set defaults for things we didn't get but need
+  if (defined $getJoinSQLParams->{supportedTypes}) { @supportedTypes = @{$getJoinSQLParams->{supportedTypes}}; }
+  if (!@supportedTypes)                            { @supportedTypes = ('SAMPLE'); }
+  if (defined $getJoinSQLParams->{supportedMarts}) { @supportedMarts = @{$getJoinSQLParams->{supportedMarts}}; }
+  if (!@supportedMarts)                            { @supportedMarts = ('SAMPLE'); }
+  $deleteExisting           //= 0;
+  $updateExisting           //= 0;
+  $martTableJoinTableName   //= 'MART_TABLE_JOIN';
+  $martCardinalityTableName //= 'MART_TABLE_JOIN_CARDINALITY';
+  $coreFlg                  //= 'Y';
 
   if ($verbose) { $logger->info("$subName Processing:$fkComponents->{$fkKey}->{fkName}...\n"); }
   for my $typeString (@supportedTypes) {
