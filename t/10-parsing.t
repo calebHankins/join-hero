@@ -191,8 +191,9 @@ sub sqlGenerationS_SL_FKBasic {
 
 sub whitespaceInsensitiveCompare {
   my ($string1, $string2) = @_;
-  my $cleaned1 = $string1 =~ tr/ \n//dr;
-  my $cleaned2 = $string2 =~ tr/ \n//dr;
+  my $stripWhitespaceRegEx = 'tr/ \n//dr';
+  my $cleaned1 = $string1 =~ $stripWhitespaceRegEx;
+  my $cleaned2 = $string2 =~ $stripWhitespaceRegEx;
   my $compare  = $cleaned1 eq $cleaned2 ? 1 : 0;
 
   return $compare;
