@@ -506,12 +506,8 @@ sub getJoinCardinality {
   for my $pkKey (sort keys %{$pkComponents}) {
     if ($join->{"${direction}Table"} eq $pkComponents->{$pkKey}->{'table'}) {
       my @pkFields = sort($pkComponents->{$pkKey}->{'fields'});
-      if (@joinFields ~~ @pkFields) {
-        $cardinality = 'ONE';
-        if ($verbose) { $logger->info("$subName Setting cardinality = '$cardinality'\n"); }
-        last;                  # If we found a key match, leave early
-      }
-    } ## end if ($join->{"${direction}Table"...})
+      if (@joinFields ~~ @pkFields) { $cardinality = 'ONE'; last; }    # If we found a key match, leave early
+    }
   } ## end for my $pkKey (sort keys...)
 
   return $cardinality;
