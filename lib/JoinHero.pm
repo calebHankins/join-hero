@@ -28,7 +28,7 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smar
 
 ##--------------------------------------------------------------------------
 # Version info
-our $VERSION = '0.1.4';
+our $VERSION = '0.1.5';
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -170,6 +170,11 @@ sub getKeyComponents {
         # Save munged schema components
         $fkComponents->{$fkName}->{'fromSchema'} = $fromSchema;
         $fkComponents->{$fkName}->{'toSchema'}   = $toSchema;
+
+        # Calculate and store cardinality
+        $fkComponents->{$fkName}->{'cardinalityNORMAL'} = getJoinCardinality($pkComponents, $fkComponents->{$fkName});
+        $fkComponents->{$fkName}->{'cardinalityREVERSED'}
+          = getJoinCardinality($pkComponents, $fkComponents->{$fkName}, 'REVERSED');
       } ## end if ($toTable and $toFieldList...)
     } ## end if ($fk =~ /$fkComponentsRegEx/gms)
   } ## end for my $fk (@keyDDL)
@@ -415,8 +420,7 @@ sub getJoinSQL {
     $outputSQL .= $mergeSQLMartTableJoin;
 
     # Add cardinality record
-    my $direction   = $typeDirection eq 'REVERSED' ? 'from' : 'to';
-    my $cardinality = getJoinCardinality($pkComponents, $fkComponents->{$fkKey}, $direction);
+    my $cardinality = $fkComponents->{$fkKey}->{"cardinality$typeDirection"};
 
     if ($deleteExisting) {
       my $deleteSQLMartTableJoinCardinality = qq{
@@ -493,6 +497,8 @@ sub getJoinCardinality {
   my ($pkComponents, $join, $direction) = @_;
   my $subName = (caller(0))[3];
   $direction //= 'to';    # Default direction if we didn't get one
+  $direction = uc($direction) eq 'REVERSED' ? 'from' : $direction;    # Allow 'REVERSED' as well as a flip toggle
+  if ($direction ne 'to' and $direction ne 'from') { return 'INVALID_DIRECTION'; }
   my @joinFields = sort($join->{"${direction}Fields"});
   my $cardinality = 'MANY';    # Default cardinality to MANY, we'll override later if we have a key match
 
