@@ -96,6 +96,11 @@ scratch
 
 # Avoid assets only needed for readme
 \bimg
+\blogo
+
+# Skip Docker
+.dockerignore
+Dockerfile
 
 # Skip Travis Continuous Integration configuration
 ^\.travis\.yml$
