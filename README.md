@@ -1,12 +1,17 @@
 # JOIN-HERO
 _Not the hero we wanted, but the one that we deserved._
 
-Transform DDL that describes keys (foreign, primary and unique) into join metadata that can be ingested by various and sundry downstream processes to link relational tables and views.
-
 [![Master Build](https://img.shields.io/travis/calebHankins/join-hero/master.svg?label=Master&nbsp;Build)](https://travis-ci.org/calebHankins/join-hero?branch=master)
 [![Master Coverage](https://img.shields.io/coveralls/github/calebHankins/join-hero/master.svg?label=Master&nbsp;Coverage)](https://coveralls.io/github/calebHankins/join-hero/?branch=master)
 [![Develop Build](https://img.shields.io/travis/calebHankins/join-hero/develop.svg?label=Develop&nbsp;Build)](https://travis-ci.org/calebHankins/join-hero?branch=develop)
 [![Develop Coverage](https://img.shields.io/coveralls/github/calebHankins/join-hero/develop.svg?label=Develop&nbsp;Coverage)](https://coveralls.io/github/calebHankins/join-hero/?branch=develop)
+
+<img src="logo\logo.png" width="200">
+
+----
+Transform DDL that describes keys (foreign, primary and unique) into join metadata that can be ingested by various and sundry downstream processes to link relational tables and views.
+
+----
 
 - [JOIN-HERO](#join-hero)
   - [Note for Windows Users](#note-for-windows-users)
