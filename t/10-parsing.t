@@ -8,7 +8,7 @@ use JoinHero;
 
 # $JoinHero::verbose = 1;    # Uncomment this and run tests with --verbose to ease debugging
 
-plan tests => 26;
+plan tests => 28;
 
 diag("Testing DDL Parsing for JoinHero $JoinHero::VERSION, Perl $], $^X");
 
@@ -90,6 +90,10 @@ sub getJoinCardinality {
 
   # If the join order is flipped, we would expect a 'MANY' cardinality
   ok(JoinHero::getJoinCardinality($pk_03, $fk_03->{S_SL_FK}, 'from') eq 'MANY');
+  ok(JoinHero::getJoinCardinality($pk_03, $fk_03->{S_SL_FK}, 'REVERSED') eq 'MANY');
+
+  # Make sure we get something back if we supply a nonsense direction
+  ok(JoinHero::getJoinCardinality($pk_03, $fk_03->{S_SL_FK}, 'Sideways') eq 'INVALID_DIRECTION');
 
   return;
 } ## end sub getJoinCardinality
