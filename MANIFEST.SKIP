@@ -83,6 +83,7 @@
 \bjoin-hero-[\d\.\_]+
 \bJoinHero-[\d\.\_]+
 \bJoinHero-.*.gz$
+\bJoinHero-v.*
 
 # Avoid scratch dirs
 scratch
@@ -98,3 +99,7 @@ scratch
 
 # Skip Travis Continuous Integration configuration
 ^\.travis\.yml$
+
+# Skip coverage files
+MYMETA.json.lock
+cover_db/
