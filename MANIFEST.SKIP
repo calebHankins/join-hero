@@ -83,6 +83,7 @@
 \bjoin-hero-[\d\.\_]+
 \bJoinHero-[\d\.\_]+
 \bJoinHero-.*.gz$
+\bJoinHero-v.*
 
 # Avoid scratch dirs
 scratch
@@ -95,6 +96,11 @@ scratch
 
 # Avoid assets only needed for readme
 \bimg
+\blogo
+
+# Skip Docker
+.dockerignore
+Dockerfile
 
 # Skip Travis Continuous Integration configuration
 ^\.travis\.yml$
