@@ -57,3 +57,8 @@ pm_to_blib
 JoinHero-*/
 MYMETA.json.lock
 cover_db/
+
+Dockerfile
+*.git/
+img/
+logo/

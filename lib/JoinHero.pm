@@ -28,7 +28,7 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smar
 
 ##--------------------------------------------------------------------------
 # Version info
-our $VERSION = '0.1.0';
+our $VERSION = '0.1.5';
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -46,6 +46,7 @@ our $verbose = 0;    # Default to not verbose
 # Capture and save valuable components in the supplied DDL file
 sub getKeyComponents {
   my ($rawDDL, $supportedMartsRef) = @_;
+  $supportedMartsRef //= [];    # If we didn't get this argument, default to an empty array ref
   my @supportedMarts = @$supportedMartsRef;
   my $subName        = (caller(0))[3];
 
@@ -110,6 +111,7 @@ sub getKeyComponents {
         # Save components
         $pkComponents->{$pkName}->{'pkName'}    = $pkName;
         $pkComponents->{$pkName}->{'table'}     = getTableName($table);
+        $pkComponents->{$pkName}->{'schema'}    = getSchemaName($table, \@supportedMarts);
         $pkComponents->{$pkName}->{'pkType'}    = $pkType;
         $pkComponents->{$pkName}->{'fieldList'} = $fieldList;
 
@@ -136,7 +138,7 @@ sub getKeyComponents {
 
         # Remove any whitespace characters from the field lists
         $fromFieldList =~ s/\s+//g;
-        $toFieldList =~ s/\s+//g;
+        $toFieldList   =~ s/\s+//g;
 
         # Uppercase field lists
         $fromFieldList = uc($fromFieldList);
@@ -168,6 +170,11 @@ sub getKeyComponents {
         # Save munged schema components
         $fkComponents->{$fkName}->{'fromSchema'} = $fromSchema;
         $fkComponents->{$fkName}->{'toSchema'}   = $toSchema;
+
+        # Calculate and store cardinality
+        $fkComponents->{$fkName}->{'cardinalityNORMAL'} = getJoinCardinality($pkComponents, $fkComponents->{$fkName});
+        $fkComponents->{$fkName}->{'cardinalityREVERSED'}
+          = getJoinCardinality($pkComponents, $fkComponents->{$fkName}, 'REVERSED');
       } ## end if ($toTable and $toFieldList...)
     } ## end if ($fk =~ /$fkComponentsRegEx/gms)
   } ## end for my $fk (@keyDDL)
@@ -179,7 +186,7 @@ sub getKeyComponents {
 ##---------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
-# Use component hash refs to generate update SQL
+# Use component hash refs to generate SQL to update the MTJ(C) tables
 sub getOutputSQL {
   my ($getOutputSQLParams) = @_;
   my $subName = (caller(0))[3];
@@ -190,6 +197,7 @@ sub getOutputSQL {
   my $pkComponents    = $getOutputSQLParams->{pkComponents};
   my $fkComponents    = $getOutputSQLParams->{fkComponents};
   my $commitThreshold = $getOutputSQLParams->{commitThreshold};
+  $commitThreshold //= 1000;    # Default if not supplied
 
   for my $key (sort keys %{$fkComponents}) {
     my $joinSQL = getJoinSQL($key, $getOutputSQLParams);
@@ -212,7 +220,7 @@ sub getOutputSQL {
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
-# Use component hash refs to generate merge SQL
+# Use component hash refs to generate merge SQL for a particular join
 sub getJoinSQL {
   my ($fkKey, $getJoinSQLParams) = @_;
   my $subName   = (caller(0))[3];
@@ -226,9 +234,20 @@ sub getJoinSQL {
   my $martTableJoinTableName   = $getJoinSQLParams->{martTableJoinTableName};
   my $martCardinalityTableName = $getJoinSQLParams->{martCardinalityTableName};
   my $coreFlg                  = $getJoinSQLParams->{coreFlg};
-  my @supportedTypes           = @{$getJoinSQLParams->{supportedTypes}};
-  my @supportedMarts           = @{$getJoinSQLParams->{supportedMarts}};
   my $allowUnknownSchema       = $getJoinSQLParams->{allowUnknownSchema};
+  my @supportedTypes;
+  my @supportedMarts;
+
+  # Set defaults for things we didn't get but need
+  if (defined $getJoinSQLParams->{supportedTypes}) { @supportedTypes = @{$getJoinSQLParams->{supportedTypes}}; }
+  if (!@supportedTypes)                            { @supportedTypes = ('SAMPLE'); }
+  if (defined $getJoinSQLParams->{supportedMarts}) { @supportedMarts = @{$getJoinSQLParams->{supportedMarts}}; }
+  if (!@supportedMarts)                            { @supportedMarts = ('SAMPLE'); }
+  $deleteExisting           //= 0;
+  $updateExisting           //= 0;
+  $martTableJoinTableName   //= 'MART_TABLE_JOIN';
+  $martCardinalityTableName //= 'MART_TABLE_JOIN_CARDINALITY';
+  $coreFlg                  //= 'Y';
 
   if ($verbose) { $logger->info("$subName Processing:$fkComponents->{$fkKey}->{fkName}...\n"); }
   for my $typeString (@supportedTypes) {
@@ -401,8 +420,7 @@ sub getJoinSQL {
     $outputSQL .= $mergeSQLMartTableJoin;
 
     # Add cardinality record
-    my $direction = $typeDirection eq 'REVERSED' ? 'from' : 'to';
-    my $cardinality = getJoinCardinality($pkComponents, $fkComponents->{$fkKey}, $direction);
+    my $cardinality = $fkComponents->{$fkKey}->{"cardinality$typeDirection"};
 
     if ($deleteExisting) {
       my $deleteSQLMartTableJoinCardinality = qq{
@@ -477,7 +495,10 @@ sub getJoinSQL {
 # Calculate a given join's cardinality
 sub getJoinCardinality {
   my ($pkComponents, $join, $direction) = @_;
-  my $subName    = (caller(0))[3];
+  my $subName = (caller(0))[3];
+  $direction //= 'to';    # Default direction if we didn't get one
+  $direction = uc($direction) eq 'REVERSED' ? 'from' : $direction;    # Allow 'REVERSED' as well as a flip toggle
+  if ($direction ne 'to' and $direction ne 'from') { return 'INVALID_DIRECTION'; }
   my @joinFields = sort($join->{"${direction}Fields"});
   my $cardinality = 'MANY';    # Default cardinality to MANY, we'll override later if we have a key match
 
@@ -485,12 +506,8 @@ sub getJoinCardinality {
   for my $pkKey (sort keys %{$pkComponents}) {
     if ($join->{"${direction}Table"} eq $pkComponents->{$pkKey}->{'table'}) {
       my @pkFields = sort($pkComponents->{$pkKey}->{'fields'});
-      if (@joinFields ~~ @pkFields) {
-        $cardinality = 'ONE';
-        if ($verbose) { $logger->info("$subName Setting cardinality = '$cardinality'\n"); }
-        last;                  # If we found a key match, leave early
-      }
-    } ## end if ($join->{"${direction}Table"...})
+      if (@joinFields ~~ @pkFields) { $cardinality = 'ONE'; last; }    # If we found a key match, leave early
+    }
   } ## end for my $pkKey (sort keys...)
 
   return $cardinality;
@@ -526,7 +543,7 @@ sub getTableName {
   my $subName = (caller(0))[3];
   my $tableName;
 
-  # If we got a dot in the object name, take the secod half, else take the original
+  # If we got a dot in the object name, take the second half, else take the original
   if ($objectName =~ /([a-zA-Z0-9_\$\@]*)(\.?)([a-zA-Z0-9_\$\@]*)/) {
     if   ($2) { $tableName = $3; }
     else      { $tableName = $objectName; }
@@ -545,6 +562,7 @@ sub getTableName {
 # Use the first part of the table name up to the first underscore for the schema name
 sub getSchemaName {
   my ($objectName, $supportedMartsRef) = @_;
+  $supportedMartsRef //= [];    # If we didn't get this argument, default to an empty array ref
   my @supportedMarts = @$supportedMartsRef;
   my $schemaName;
 
