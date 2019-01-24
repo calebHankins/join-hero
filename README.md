@@ -2,9 +2,9 @@
 _Not the hero we wanted, but the one that we deserved._
 
 [![Master Build](https://img.shields.io/travis/Acxiom/join-hero/master.svg?label=Master&nbsp;Build)](https://travis-ci.org/Acxiom/join-hero?branch=master)
-[![Master Coverage](https://img.shields.io/coveralls/github/calebHankins/join-hero/master.svg?label=Master&nbsp;Coverage)](https://coveralls.io/github/calebHankins/join-hero/?branch=master)
+[![Master Coverage](https://img.shields.io/coveralls/github/Acxiom/join-hero/master.svg?label=Master&nbsp;Coverage)](https://coveralls.io/github/Acxiom/join-hero/?branch=master)
 [![Develop Build](https://img.shields.io/travis/Acxiom/join-hero/develop.svg?label=Develop&nbsp;Build)](https://travis-ci.org/Acxiom/join-hero?branch=develop)
-[![Develop Coverage](https://img.shields.io/coveralls/github/calebHankins/join-hero/develop.svg?label=Develop&nbsp;Coverage)](https://coveralls.io/github/calebHankins/join-hero/?branch=develop)
+[![Develop Coverage](https://img.shields.io/coveralls/github/Acxiom/join-hero/develop.svg?label=Develop&nbsp;Coverage)](https://coveralls.io/github/Acxiom/join-hero/?branch=develop)
 
 <img src="logo\logo.png" width="200">
 
