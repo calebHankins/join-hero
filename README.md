@@ -8,7 +8,7 @@ _Not the hero we wanted, but the one that we deserved._
 
 <img src="logo/logo.png" width="200">
 
-----
+
 Transform DDL that describes keys (foreign, primary and unique) into join metadata that can be ingested by various and sundry downstream processes to link relational tables and views.
 
 ----
