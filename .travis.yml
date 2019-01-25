@@ -13,7 +13,7 @@ before_install:
 script:
   perl Build.PL && ./Build build && cover -test -report coveralls
 
-os: 
+os:
   - linux
 
 env:
