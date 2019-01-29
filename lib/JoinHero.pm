@@ -300,7 +300,7 @@ sub getJoinSQL {
     if ($deleteExisting) {
       my $deleteSQLMartTableJoin = qq{
       DELETE FROM $martTableJoinTableName A
-      WHERE 
+      WHERE
         A.TYPE = '$type' AND
         NVL(A.CORE_FLG,'NULL') = '$coreFlg' AND
         A.FROM_SCHEMA = '$fromSchema' AND
@@ -364,7 +364,7 @@ sub getJoinSQL {
       WITH C AS
         ( SELECT COUNT (*) AS rec_count
           FROM $martTableJoinTableName A
-          WHERE     
+          WHERE
             A.TYPE = '$type' AND
             NVL(A.CORE_FLG,'NULL') = '$coreFlg' AND
             A.FROM_SCHEMA = '$fromSchema' AND
@@ -391,23 +391,23 @@ sub getJoinSQL {
       ) B
       ON (  A.TYPE = B.TYPE
         and NVL(A.CORE_FLG,'NULL1') = NVL(B.CORE_FLG,'NULL2')
-        and A.FROM_SCHEMA = B.FROM_SCHEMA 
-        and A.TO_SCHEMA = B.TO_SCHEMA 
-        and A.FROM_TABLE = B.FROM_TABLE 
-        and A.TO_TABLE = B.TO_TABLE 
+        and A.FROM_SCHEMA = B.FROM_SCHEMA
+        and A.TO_SCHEMA = B.TO_SCHEMA
+        and A.FROM_TABLE = B.FROM_TABLE
+        and A.TO_TABLE = B.TO_TABLE
         and A.FIELD_JOIN_ORD = B.FIELD_JOIN_ORD)
-      WHEN NOT MATCHED THEN 
+      WHEN NOT MATCHED THEN
       INSERT (
-        FROM_SCHEMA, FROM_TABLE, FROM_FIELD, TO_SCHEMA, TO_TABLE, 
+        FROM_SCHEMA, FROM_TABLE, FROM_FIELD, TO_SCHEMA, TO_TABLE,
         TO_FIELD, FIELD_JOIN_ORD, TYPE, NOTES, CORE_FLG)
       VALUES (
-        B.FROM_SCHEMA, B.FROM_TABLE, B.FROM_FIELD, B.TO_SCHEMA, B.TO_TABLE, 
+        B.FROM_SCHEMA, B.FROM_TABLE, B.FROM_FIELD, B.TO_SCHEMA, B.TO_TABLE,
         B.TO_FIELD, B.FIELD_JOIN_ORD, B.TYPE, B.NOTES, B.CORE_FLG)};
 
     if ($updateExisting) {
       $mergeSQLMartTableJoin .= qq{
         WHEN MATCHED THEN
-        UPDATE SET 
+        UPDATE SET
           A.FROM_FIELD = B.FROM_FIELD,
           A.TO_FIELD = B.TO_FIELD,
           A.NOTES = B.NOTES};
@@ -425,7 +425,7 @@ sub getJoinSQL {
     if ($deleteExisting) {
       my $deleteSQLMartTableJoinCardinality = qq{
       DELETE FROM $martCardinalityTableName A
-      WHERE 
+      WHERE
         A.TYPE = '$type' AND
         NVL(A.CORE_FLG,'NULL') = '$coreFlg' AND
         A.FROM_SCHEMA = '$fromSchema' AND
@@ -457,22 +457,22 @@ sub getJoinSQL {
       ON (
         A.TYPE = B.TYPE
         and NVL(A.CORE_FLG,'NULL1') = NVL(B.CORE_FLG,'NULL2')
-        and A.FROM_SCHEMA = B.FROM_SCHEMA 
-        and A.TO_SCHEMA = B.TO_SCHEMA 
-        and A.FROM_TABLE = B.FROM_TABLE 
+        and A.FROM_SCHEMA = B.FROM_SCHEMA
+        and A.TO_SCHEMA = B.TO_SCHEMA
+        and A.FROM_TABLE = B.FROM_TABLE
         and A.TO_TABLE = B.TO_TABLE)
-      WHEN NOT MATCHED THEN 
+      WHEN NOT MATCHED THEN
       INSERT (
-        FROM_SCHEMA, FROM_TABLE, TO_SCHEMA, TO_TABLE, CARDINALITY, 
+        FROM_SCHEMA, FROM_TABLE, TO_SCHEMA, TO_TABLE, CARDINALITY,
         TYPE, NOTES, CORE_FLG)
       VALUES (
-        B.FROM_SCHEMA, B.FROM_TABLE, B.TO_SCHEMA, B.TO_TABLE, B.CARDINALITY, 
+        B.FROM_SCHEMA, B.FROM_TABLE, B.TO_SCHEMA, B.TO_TABLE, B.CARDINALITY,
         B.TYPE, B.NOTES, B.CORE_FLG)};
 
     if ($updateExisting) {
       $mergeSQLMartTableJoinCardinality .= qq{
         WHEN MATCHED THEN
-        UPDATE SET 
+        UPDATE SET
           A.CARDINALITY = B.CARDINALITY,
           A.NOTES = B.NOTES};
     } ## end if ($updateExisting)
