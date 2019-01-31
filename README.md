@@ -154,7 +154,7 @@ dmake.exe install
 #### Manual Dependency Install
 If you don't want to or can't install dependencies via `Build installdeps`, you can install them manually via your favorite management system.
 
-[The dependency list can be reviewed here](MYMETA.json).
+[The dependency list can be reviewed here](META.yml).
 
 ##### Example Commands To Install Log Log4perl On Various Platforms
 - `cpan install Log::Log4perl (cpan)`
