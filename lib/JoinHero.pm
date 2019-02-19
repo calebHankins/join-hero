@@ -28,7 +28,7 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smar
 
 ##--------------------------------------------------------------------------
 # Version info
-our $VERSION = '0.1.5';
+our $VERSION = '0.1.6';
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -136,6 +136,9 @@ sub getKeyComponents {
       # Store components if we have all the information that we will need
       if ($toTable and $toFieldList and $fkName and $fromTable and $fromFieldList) {
 
+        # Generating a key name that includes the from and to table name. Modeler tool allows for non-unique FK names...
+        my $fkKey = "$fkName-_-$fromTable-_-$toTable";
+
         # Remove any whitespace characters from the field lists
         $fromFieldList =~ s/\s+//g;
         $toFieldList   =~ s/\s+//g;
@@ -149,15 +152,16 @@ sub getKeyComponents {
         $toTable   = getCleanedObjectName($toTable);
 
         # Save components
-        $fkComponents->{$fkName}->{'fkName'}        = $fkName;
-        $fkComponents->{$fkName}->{'fromTable'}     = getTableName($fromTable);
-        $fkComponents->{$fkName}->{'fromFieldList'} = $fromFieldList;
-        $fkComponents->{$fkName}->{'toTable'}       = getTableName($toTable);
-        $fkComponents->{$fkName}->{'toFieldList'}   = $toFieldList;
+        $fkComponents->{$fkKey}->{'fkKey'}         = $fkKey;
+        $fkComponents->{$fkKey}->{'fkName'}        = $fkName;
+        $fkComponents->{$fkKey}->{'fromTable'}     = getTableName($fromTable);
+        $fkComponents->{$fkKey}->{'fromFieldList'} = $fromFieldList;
+        $fkComponents->{$fkKey}->{'toTable'}       = getTableName($toTable);
+        $fkComponents->{$fkKey}->{'toFieldList'}   = $toFieldList;
 
         # Split and store field names as array elements
-        @{$fkComponents->{$fkName}->{'fromFields'}} = split(',', $fromFieldList);
-        @{$fkComponents->{$fkName}->{'toFields'}}   = split(',', $toFieldList);
+        @{$fkComponents->{$fkKey}->{'fromFields'}} = split(',', $fromFieldList);
+        @{$fkComponents->{$fkKey}->{'toFields'}}   = split(',', $toFieldList);
 
         # Munge and set schema names using the table prefix
         my $fromSchema = getSchemaName($fromTable, \@supportedMarts);
@@ -168,13 +172,13 @@ sub getKeyComponents {
         if ($toSchema   && !$fromSchema) { $fromSchema = $toSchema; }
 
         # Save munged schema components
-        $fkComponents->{$fkName}->{'fromSchema'} = $fromSchema;
-        $fkComponents->{$fkName}->{'toSchema'}   = $toSchema;
+        $fkComponents->{$fkKey}->{'fromSchema'} = $fromSchema;
+        $fkComponents->{$fkKey}->{'toSchema'}   = $toSchema;
 
         # Calculate and store cardinality
-        $fkComponents->{$fkName}->{'cardinalityNORMAL'} = getJoinCardinality($pkComponents, $fkComponents->{$fkName});
-        $fkComponents->{$fkName}->{'cardinalityREVERSED'}
-          = getJoinCardinality($pkComponents, $fkComponents->{$fkName}, 'REVERSED');
+        $fkComponents->{$fkKey}->{'cardinalityNORMAL'} = getJoinCardinality($pkComponents, $fkComponents->{$fkKey});
+        $fkComponents->{$fkKey}->{'cardinalityREVERSED'}
+          = getJoinCardinality($pkComponents, $fkComponents->{$fkKey}, 'REVERSED');
       } ## end if ($toTable and $toFieldList...)
     } ## end if ($fk =~ /$fkComponentsRegEx/gms)
   } ## end for my $fk (@keyDDL)
@@ -249,7 +253,7 @@ sub getJoinSQL {
   $martCardinalityTableName //= 'MART_TABLE_JOIN_CARDINALITY';
   $coreFlg                  //= 'Y';
 
-  if ($verbose) { $logger->info("$subName Processing:$fkComponents->{$fkKey}->{fkName}...\n"); }
+  if ($verbose) { $logger->info("$subName Processing:$fkComponents->{$fkKey}->{fkKey}...\n"); }
   for my $typeString (@supportedTypes) {
 
     # A typeString is optionally a colon delimited string in the format app[:direction]
@@ -259,7 +263,7 @@ sub getJoinSQL {
 
     if ($verbose) {
       $logger->info(
-                 "$subName Processing:$fkComponents->{$fkKey}->{fkName} for type $type, direction $typeDirection...\n");
+                  "$subName Processing:$fkComponents->{$fkKey}->{fkKey} for type $type, direction $typeDirection...\n");
     }
 
     # App specific init
@@ -318,7 +322,7 @@ sub getJoinSQL {
     for my $fkToField (@{$fkComponents->{$fkKey}->{'toFields'}}) {
       if ($verbose) {
         $logger->info(
-                    "$subName Processing:$fkComponents->{$fkKey}->{fkName} for type $type and toField $fkToField...\n");
+                     "$subName Processing:$fkComponents->{$fkKey}->{fkKey} for type $type and toField $fkToField...\n");
       }
       my $fkFromField  = @{$fkComponents->{$fkKey}->{'fromFields'}}[$i];    # Grab the matching from field
       my $fieldJoinOrd = $i + 1;
@@ -346,7 +350,7 @@ sub getJoinSQL {
           '$toField' as TO_FIELD,
           $fieldJoinOrd as FIELD_JOIN_ORD,
           '$type' as TYPE,
-          'AUTO-GENERATED BY Unregistered JoinHero 2 using $fkKey' as NOTES,
+          'AUTO-GENERATED BY Unregistered JoinHero 2 using $fkComponents->{$fkKey}->{fkName}' as NOTES,
           '$coreFlg' as CORE_FLG
         FROM DUAL};
 
@@ -450,7 +454,7 @@ sub getJoinSQL {
           '$toTable' as TO_TABLE,
           '$cardinality' as CARDINALITY,
           '$type' as TYPE,
-          'AUTO-GENERATED BY Unregistered JoinHero 2 using $fkKey' as NOTES,
+          'AUTO-GENERATED BY Unregistered JoinHero 2 using $fkComponents->{$fkKey}->{fkName}' as NOTES,
           '$coreFlg' as CORE_FLG
         FROM DUAL
       ) B
