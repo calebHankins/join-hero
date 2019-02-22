@@ -19,6 +19,8 @@
 
 package JoinHero;
 
+$i = 0;
+
 use warnings;
 use strict;
 use File::Glob ':glob';    # Perl extension for BSD glob routine
@@ -28,7 +30,7 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smar
 
 ##--------------------------------------------------------------------------
 # Version info
-our $VERSION = '0.1.6';
+our $VERSION = '0.1.7';
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -39,7 +41,10 @@ our $logger = JoinHero::Logger->new() or die "Cannot retrieve Logger object\n";
 
 ##--------------------------------------------------------------------------
 # Verbosity
-our $verbose = 0;    # Default to not verbose
+our $verbose =
+
+
+0;    # Default to not verbose
 ##--------------------------------------------------------------------------
 
 ##---------------------------------------------------------------------------
@@ -136,8 +141,10 @@ sub getKeyComponents {
       # Store components if we have all the information that we will need
       if ($toTable and $toFieldList and $fkName and $fromTable and $fromFieldList) {
 
+        for $fk1 (@keyDDL) { print 'hello';}
+
         # Generating a key name that includes the from and to table name. Modeler tool allows for non-unique FK names...
-        my $fkKey = "$fkName-_-$fromTable-_-$toTable";
+        my $fkKey = "$fkName-_-$fromTable-_-$toTable_4567";
 
         # Remove any whitespace characters from the field lists
         $fromFieldList =~ s/\s+//g;
