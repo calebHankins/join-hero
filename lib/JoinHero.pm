@@ -28,7 +28,7 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smar
 
 ##--------------------------------------------------------------------------
 # Version info
-our $VERSION = '0.1.6';
+our $VERSION = '0.1.7';
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -590,6 +590,31 @@ sub getSchemaName {
 
   return $schemaName;
 } ## end sub getSchemaName
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
+# Lookup and return a particular join based on a from and to table and supplied components
+sub getJoinFromComponents {
+  my ($fromTable, $toTable, $getJoinFromComponentsParams) = @_;
+  my $subName = (caller(0))[3];
+  my $join    = {};
+
+  # Alias our params for easier use
+  my $pkComponents = $getJoinFromComponentsParams->{pkComponents};
+  my $fkComponents = $getJoinFromComponentsParams->{fkComponents};
+
+  # Search for our requested join (NORMAL and REVERSE style)
+  for my $key (sort keys %{$fkComponents}) {
+    if ($fkComponents->{$key}->{fromTable} eq $fromTable and $fkComponents->{$key}->{toTable} eq $toTable) {
+      $join = $fkComponents->{$key};
+    }
+    elsif ($fkComponents->{$key}->{toTable} eq $fromTable and $fkComponents->{$key}->{fromTable} eq $toTable) {
+      $join = $fkComponents->{$key};
+    }
+  } ## end for my $key (sort keys ...)
+
+  return $join;
+} ## end sub getJoinFromComponents
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------

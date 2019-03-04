@@ -8,7 +8,7 @@ use JoinHero;
 
 # $JoinHero::verbose = 1;    # Uncomment this and run tests with --verbose to ease debugging
 
-plan tests => 28;
+plan tests => 32;
 
 diag("Testing DDL Parsing for JoinHero $JoinHero::VERSION, Perl $], $^X");
 
@@ -29,6 +29,7 @@ fkBreakOut();
 pkBreakOut();
 getJoinCardinality();
 sqlGenerationS_SL_FKBasic();
+getJoinFromComponents();
 
 sub getSchemaName {
 
@@ -99,6 +100,23 @@ sub getJoinCardinality {
 
   return;
 } ## end sub getJoinCardinality
+
+sub getJoinFromComponents {
+  my $subName = (caller(0))[3];
+
+  my $getJoinCardinalityParams = {pkComponents => $pk_01, fkComponents => $fk_01};
+  my $table1                   = 'STORE_LOCATIONS';
+  my $table2                   = 'STORES';
+
+  my $joinNormal = JoinHero::getJoinFromComponents($table1, $table2, $getJoinCardinalityParams);
+  ok($joinNormal->{toTable} eq 'STORE_LOCATIONS', "$subName toTable NORMAL direction lookup");
+  ok($joinNormal->{fromTable} eq 'STORES',        "$subName fromTable NORMAL direction lookup");
+
+  my $joinReversed = JoinHero::getJoinFromComponents($table2, $table1, $getJoinCardinalityParams);
+  ok($joinReversed->{toTable} eq 'STORE_LOCATIONS', "$subName toTable REVERSE direction lookup");
+  ok($joinReversed->{fromTable} eq 'STORES',        "$subName fromTable REVERSE direction lookup");
+
+} ## end sub getJoinFromComponents
 
 sub sqlGenerationS_SL_FKBasic {
 
