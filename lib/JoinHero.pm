@@ -594,26 +594,44 @@ sub getSchemaName {
 
 ##--------------------------------------------------------------------------
 # Lookup and return a particular join based on a from and to table and supplied components
+# Returns:
+#   A hash ref with a key of 'join' with a value of the requested join
+#   and a key of direction with a value of the join direction (based on the supplied from/to relative to the join)
 sub getJoinFromComponents {
-  my ($fromTable, $toTable, $getJoinFromComponentsParams) = @_;
-  my $subName = (caller(0))[3];
-  my $join    = {};
+  my ($getJoinFromComponentsParams) = @_;
+  my $subName                       = (caller(0))[3];
+  my $join                          = {};
+  my $direction;
 
   # Alias our params for easier use
+  my $fromTable    = $getJoinFromComponentsParams->{fromTable};
+  my $toTable      = $getJoinFromComponentsParams->{toTable};
   my $pkComponents = $getJoinFromComponentsParams->{pkComponents};
   my $fkComponents = $getJoinFromComponentsParams->{fkComponents};
 
   # Search for our requested join (NORMAL and REVERSE style)
   for my $key (sort keys %{$fkComponents}) {
+
+    # Prefer 'NORMAL' style joins if we can find them
     if ($fkComponents->{$key}->{fromTable} eq $fromTable and $fkComponents->{$key}->{toTable} eq $toTable) {
-      $join = $fkComponents->{$key};
+      $join      = $fkComponents->{$key};
+      $direction = 'NORMAL';
+      last;
     }
+
+    # Otherwise, we'll take a 'REVERSED' join if we have to
     elsif ($fkComponents->{$key}->{toTable} eq $fromTable and $fkComponents->{$key}->{fromTable} eq $toTable) {
-      $join = $fkComponents->{$key};
+      $join      = $fkComponents->{$key};
+      $direction = 'REVERSED';
+      last;
     }
   } ## end for my $key (sort keys ...)
 
-  return $join;
+  if (!defined($direction)) {
+    $ibm::logger->warn("$subName could not find a join for fromTable:$fromTable toTable:$toTable");
+  }
+
+  return {join => $join, direction => $direction};
 } ## end sub getJoinFromComponents
 ##--------------------------------------------------------------------------
 
