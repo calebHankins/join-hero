@@ -1,15 +1,14 @@
 language: perl
 perl:
   - "5.26"
-  - "5.24"
   - "5.10"
 
 before_install:
-  - cpanm Test::Code::TidyAll
-  - cpanm Perl::Critic
-  - cpanm Test::Perl::Critic
-  - cpanm Perl::Tidy
-  - cpanm -n Devel::Cover::Report::Coveralls
+  - cpanm --notest Test::Code::TidyAll
+  - cpanm --notest Perl::Critic
+  - cpanm --notest Test::Perl::Critic
+  - cpanm --notest Perl::Tidy
+  - cpanm --notest Devel::Cover::Report::Coveralls
 script:
   perl Build.PL && ./Build build && cover -test -report coveralls
 
