@@ -28,7 +28,7 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smar
 
 ##--------------------------------------------------------------------------
 # Version info
-our $VERSION = '0.1.8';
+our $VERSION = '0.2.0';
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -723,11 +723,14 @@ sub getFilepathParts {
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
-# Get unique array curtesy of perlfaq4
+# Get unique array
+# Serializing, adding serialized version to a hash and checking against the hash
+# to see if we've seen the element before.  curtesy of perlfaq4 + Dumper for serialization
 sub getUniqArray {
   my (@array) = @_;
   my %seen = ();
-  my @unique = grep { !$seen{$_}++ } @array;
+  my @unique = grep { !$seen{Dumper($_)}++ } @array;
+
   return @unique;
 } ## end sub getUniqArray
 ##--------------------------------------------------------------------------
