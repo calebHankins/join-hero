@@ -8,7 +8,7 @@ use JoinHero;
 
 # $JoinHero::verbose = 1;    # Uncomment this and run tests with --verbose to ease debugging
 
-plan tests => 34;
+plan tests => 35;
 
 diag("Testing DDL Parsing for JoinHero $JoinHero::VERSION, Perl $], $^X");
 
@@ -30,6 +30,7 @@ pkBreakOut();
 getJoinCardinality();
 sqlGenerationS_SL_FKBasic();
 getJoinFromComponents();
+tableCreation();
 
 sub getSchemaName {
 
@@ -218,6 +219,60 @@ sub sqlGenerationS_SL_FKBasic {
 
   return;
 } ## end sub sqlGenerationS_SL_FKBasic
+
+sub tableCreation {
+  my $subName = (caller(0))[3];
+
+  my $actualSQL
+    = JoinHero::getOutputSQL({martTableJoinTableName => 'JJJ.SAUCY_MTJ', martCardinalityTableName => 'JJJ.SAUCY_MTJC'});
+
+  my $expectedSQL = q{
+  CREATE TABLE JJJ.SAUCY_MTJ
+  (
+      FROM_SCHEMA       VARCHAR2 (4000),
+      FROM_TABLE        VARCHAR2 (4000),
+      FROM_FIELD        VARCHAR2 (4000),
+      TO_SCHEMA         VARCHAR2 (4000),
+      TO_TABLE          VARCHAR2 (4000),
+      TO_FIELD          VARCHAR2 (4000),
+      FIELD_JOIN_ORD    NUMBER,
+      TYPE              VARCHAR2 (4000),
+      NOTES             VARCHAR2 (4000),
+      CORE_FLG          VARCHAR2 (4000),
+      PRIMARY KEY
+          (TYPE,
+          FROM_SCHEMA,
+          TO_SCHEMA,
+          FROM_TABLE,
+          TO_TABLE,
+          FIELD_JOIN_ORD)
+  );
+
+  CREATE TABLE JJJ.SAUCY_MTJC
+  (
+    FROM_SCHEMA    VARCHAR2 (4000),
+    FROM_TABLE     VARCHAR2 (4000),
+    TO_SCHEMA      VARCHAR2 (4000),
+    TO_TABLE       VARCHAR2 (4000),
+    CARDINALITY    VARCHAR2 (4000),
+    TYPE           VARCHAR2 (4000),
+    NOTES          VARCHAR2 (4000),
+    CORE_FLG       VARCHAR2 (4000),
+    PRIMARY KEY
+        (TYPE,
+          FROM_SCHEMA,
+          TO_SCHEMA,
+          FROM_TABLE,
+          TO_TABLE)
+  );
+
+  commit;
+   };
+
+  ok(whitespaceInsensitiveCompare($actualSQL, $expectedSQL), "$subName checking for expected table creation SQL");
+
+  return;
+} ## end sub tableCreation
 
 sub whitespaceInsensitiveCompare {
   my ($string1, $string2) = @_;
