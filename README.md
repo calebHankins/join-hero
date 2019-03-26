@@ -6,9 +6,9 @@ _Not the hero we wanted, but the one that we deserved._
 [![Develop Build](https://img.shields.io/travis/Acxiom/join-hero/develop.svg?label=Develop&nbsp;Build)](https://travis-ci.org/Acxiom/join-hero?branch=develop)
 [![Develop Coverage](https://img.shields.io/coveralls/github/Acxiom/join-hero/develop.svg?label=Develop&nbsp;Coverage)](https://coveralls.io/github/Acxiom/join-hero/?branch=develop)
 
-<img src="logo\logo.png" width="200">
+<img src="logo/logo.png" width="200">
 
-----
+
 Transform DDL that describes keys (foreign, primary and unique) into join metadata that can be ingested by various and sundry downstream processes to link relational tables and views.
 
 ----
@@ -104,9 +104,8 @@ cpanm https://<YOUR_USER_HERE>@<REPO_HOST_HERE>/<PATH_TO_GIT_HERE>.git@<BRANCH_H
 If you've checkout out the repository or unpacked the release tarball, you can run the following from the folder containing this README:
 ```powershell
 # Install from the directory the README file is in after unpacking the tar.gz
-cpanm install .
+cpanm .
 ```
-
 
 ##### Installing cpanm (App::cpanminus)
 https://metacpan.org/pod/App::cpanminus#INSTALLATION
@@ -116,7 +115,7 @@ https://metacpan.org/pod/App::cpanminus#INSTALLATION
 #### Install using cpan
 
 ```powershell
-cpan install .
+cpan .
 ```
 
 #### Install using Module::Build
@@ -155,7 +154,7 @@ dmake.exe install
 #### Manual Dependency Install
 If you don't want to or can't install dependencies via `Build installdeps`, you can install them manually via your favorite management system.
 
-[The dependency list can be reviewed here](MYMETA.json).
+[The dependency list can be reviewed here](META.yml).
 
 ##### Example Commands To Install Log Log4perl On Various Platforms
 - `cpan install Log::Log4perl (cpan)`

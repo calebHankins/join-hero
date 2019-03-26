@@ -8,7 +8,7 @@ use JoinHero;
 
 # $JoinHero::verbose = 1;    # Uncomment this and run tests with --verbose to ease debugging
 
-plan tests => 28;
+plan tests => 34;
 
 diag("Testing DDL Parsing for JoinHero $JoinHero::VERSION, Perl $], $^X");
 
@@ -29,6 +29,7 @@ fkBreakOut();
 pkBreakOut();
 getJoinCardinality();
 sqlGenerationS_SL_FKBasic();
+getJoinFromComponents();
 
 sub getSchemaName {
 
@@ -52,15 +53,16 @@ sub getTableName {
 sub fkBreakOut {
 
   # Let's make sure this FK broke out like we expected
-  ok($fk_01->{S_SL_FK}->{fromTable} eq 'STORES');
-  ok($fk_01->{S_SL_FK}->{toTable} eq 'STORE_LOCATIONS');
-  ok($fk_01->{S_SL_FK}->{fromSchema} eq 'JJJ');
-  ok($fk_01->{S_SL_FK}->{toSchema} eq 'JJJ');
-  ok($fk_01->{S_SL_FK}->{fromFields} ~~ ['LOCATION_ID']);
-  ok($fk_01->{S_SL_FK}->{toFields}   ~~ ['LOCATION_ID']);
-  ok($fk_01->{S_SL_FK}->{fromFieldList} eq 'LOCATION_ID');
-  ok($fk_01->{S_SL_FK}->{toFieldList} eq 'LOCATION_ID');
-  ok($fk_01->{S_SL_FK}->{fkName} eq 'S_SL_FK');
+  my $fkKey = 'S_SL_FK-_-JJJ.STORES-_-JJJ.STORE_LOCATIONS';
+  ok($fk_01->{$fkKey}->{fromTable} eq 'STORES');
+  ok($fk_01->{$fkKey}->{toTable} eq 'STORE_LOCATIONS');
+  ok($fk_01->{$fkKey}->{fromSchema} eq 'JJJ');
+  ok($fk_01->{$fkKey}->{toSchema} eq 'JJJ');
+  ok($fk_01->{$fkKey}->{fromFields} ~~ ['LOCATION_ID']);
+  ok($fk_01->{$fkKey}->{toFields}   ~~ ['LOCATION_ID']);
+  ok($fk_01->{$fkKey}->{fromFieldList} eq 'LOCATION_ID');
+  ok($fk_01->{$fkKey}->{toFieldList} eq 'LOCATION_ID');
+  ok($fk_01->{$fkKey}->{fkName} eq 'S_SL_FK');
 
   return;
 } ## end sub fkBreakOut
@@ -81,22 +83,46 @@ sub pkBreakOut {
 sub getJoinCardinality {
 
   # Just S_SL_FK by itself with no matching target pk/uk should result in a 'MANY' cardinality
+  my $fkKey = 'S_SL_FK-_-JJJ.STORES-_-JJJ.STORE_LOCATIONS';
   my ($pk_02, $fk_02) = JoinHero::getKeyComponents("$s_sl_fk");
-  ok(JoinHero::getJoinCardinality($pk_02, $fk_02->{S_SL_FK}) eq 'MANY');
+  ok(JoinHero::getJoinCardinality($pk_02, $fk_02->{$fkKey}) eq 'MANY');
 
   # S_SL_FK with a matching target pk/uk should result in a 'ONE' cardinality
   my ($pk_03, $fk_03) = JoinHero::getKeyComponents("$s_sl_fk \n $stores_locations_pk");
-  ok(JoinHero::getJoinCardinality($pk_03, $fk_03->{S_SL_FK}) eq 'ONE');
+  ok(JoinHero::getJoinCardinality($pk_03, $fk_03->{$fkKey}) eq 'ONE');
 
   # If the join order is flipped, we would expect a 'MANY' cardinality
-  ok(JoinHero::getJoinCardinality($pk_03, $fk_03->{S_SL_FK}, 'from') eq 'MANY');
-  ok(JoinHero::getJoinCardinality($pk_03, $fk_03->{S_SL_FK}, 'REVERSED') eq 'MANY');
+  ok(JoinHero::getJoinCardinality($pk_03, $fk_03->{$fkKey}, 'from') eq 'MANY');
+  ok(JoinHero::getJoinCardinality($pk_03, $fk_03->{$fkKey}, 'REVERSED') eq 'MANY');
 
   # Make sure we get something back if we supply a nonsense direction
-  ok(JoinHero::getJoinCardinality($pk_03, $fk_03->{S_SL_FK}, 'Sideways') eq 'INVALID_DIRECTION');
+  ok(JoinHero::getJoinCardinality($pk_03, $fk_03->{$fkKey}, 'Sideways') eq 'INVALID_DIRECTION');
 
   return;
 } ## end sub getJoinCardinality
+
+sub getJoinFromComponents {
+  my $subName = (caller(0))[3];
+
+  my $table1 = 'STORE_LOCATIONS';
+  my $table2 = 'STORES';
+  my $getJoinFromComponentsParamsNormal
+    = {toTable => $table1, fromTable => $table2, pkComponents => $pk_01, fkComponents => $fk_01};
+
+  my ($joinNormal) = JoinHero::getJoinFromComponents($getJoinFromComponentsParamsNormal);
+  ok($joinNormal->{join}->{toTable} eq 'STORE_LOCATIONS', "$subName toTable NORMAL direction lookup");
+  ok($joinNormal->{join}->{fromTable} eq 'STORES',        "$subName fromTable NORMAL direction lookup");
+  ok($joinNormal->{direction} eq 'NORMAL',                "$subName direction NORMAL direction lookup");
+
+  my $getJoinFromComponentsParamsReversed
+    = {toTable => $table2, fromTable => $table1, pkComponents => $pk_01, fkComponents => $fk_01};
+
+  my ($joinReversed) = JoinHero::getJoinFromComponents($getJoinFromComponentsParamsReversed);
+  ok($joinReversed->{join}->{toTable} eq 'STORE_LOCATIONS', "$subName toTable REVERSE direction lookup");
+  ok($joinReversed->{join}->{fromTable} eq 'STORES',        "$subName fromTable REVERSE direction lookup");
+  ok($joinReversed->{direction} eq 'REVERSED',              "$subName direction REVERSED direction lookup");
+
+} ## end sub getJoinFromComponents
 
 sub sqlGenerationS_SL_FKBasic {
 
@@ -149,7 +175,7 @@ sub sqlGenerationS_SL_FKBasic {
         B.FROM_SCHEMA, B.FROM_TABLE, B.FROM_FIELD, B.TO_SCHEMA, B.TO_TABLE,
         B.TO_FIELD, B.FIELD_JOIN_ORD, B.TYPE, B.NOTES, B.CORE_FLG);
 
-        
+
       MERGE INTO MART_TABLE_JOIN_CARDINALITY A USING
       (
         SELECT
@@ -180,7 +206,7 @@ sub sqlGenerationS_SL_FKBasic {
   };
 
   # Let's test getJoinSQL. This guy uses component hash refs to generate merge SQL for a particular join
-  my $fkKey              = $fk_01->{S_SL_FK}->{fkName};
+  my $fkKey              = 'S_SL_FK-_-JJJ.STORES-_-JJJ.STORE_LOCATIONS';
   my $getJoinSQLParams   = {pkComponents => $pk_01, fkComponents => $fk_01};
   my $getJoinSQL_S_SL_FK = JoinHero::getJoinSQL($fkKey, $getJoinSQLParams);
   ok(whitespaceInsensitiveCompare($getJoinSQL_S_SL_FKExpectedSQL, $getJoinSQL_S_SL_FK));
