@@ -213,7 +213,7 @@ sub sqlGenerationS_SL_FKBasic {
   ok(whitespaceInsensitiveCompare($getJoinSQL_S_SL_FKExpectedSQL, $getJoinSQL_S_SL_FK));
 
   # Should get a very similar answer for the outer getJoinSQL sub since this fk is the only fk we loaded up
-  my $getOutputSQLParms    = {pkComponents => $pk_01, fkComponents => $fk_01};
+  my $getOutputSQLParms = {pkComponents => $pk_01, fkComponents => $fk_01};
   my $getOutputSQL_S_SL_FK = JoinHero::getOutputSQL($getJoinSQLParams);
   ok(whitespaceInsensitiveCompare("$getJoinSQL_S_SL_FKExpectedSQL\ncommit;\n", $getOutputSQL_S_SL_FK));
 
@@ -229,14 +229,14 @@ sub tableCreation {
   my $expectedSQL = q{
   CREATE TABLE JJJ.SAUCY_MTJ
   (
-      FROM_SCHEMA       VARCHAR2 (4000),
-      FROM_TABLE        VARCHAR2 (4000),
-      FROM_FIELD        VARCHAR2 (4000),
-      TO_SCHEMA         VARCHAR2 (4000),
-      TO_TABLE          VARCHAR2 (4000),
-      TO_FIELD          VARCHAR2 (4000),
+      FROM_SCHEMA       VARCHAR2 (100),
+      FROM_TABLE        VARCHAR2 (100),
+      FROM_FIELD        VARCHAR2 (100),
+      TO_SCHEMA         VARCHAR2 (100),
+      TO_TABLE          VARCHAR2 (100),
+      TO_FIELD          VARCHAR2 (100),
       FIELD_JOIN_ORD    NUMBER,
-      TYPE              VARCHAR2 (4000),
+      TYPE              VARCHAR2 (100),
       NOTES             VARCHAR2 (4000),
       CORE_FLG          VARCHAR2 (4000),
       PRIMARY KEY
@@ -250,12 +250,12 @@ sub tableCreation {
 
   CREATE TABLE JJJ.SAUCY_MTJC
   (
-    FROM_SCHEMA    VARCHAR2 (4000),
-    FROM_TABLE     VARCHAR2 (4000),
-    TO_SCHEMA      VARCHAR2 (4000),
-    TO_TABLE       VARCHAR2 (4000),
+    FROM_SCHEMA    VARCHAR2 (100),
+    FROM_TABLE     VARCHAR2 (100),
+    TO_SCHEMA      VARCHAR2 (100),
+    TO_TABLE       VARCHAR2 (100),
     CARDINALITY    VARCHAR2 (4000),
-    TYPE           VARCHAR2 (4000),
+    TYPE           VARCHAR2 (100),
     NOTES          VARCHAR2 (4000),
     CORE_FLG       VARCHAR2 (4000),
     PRIMARY KEY
