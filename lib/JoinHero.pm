@@ -141,7 +141,7 @@ sub getKeyComponents {
 
         # Remove any whitespace characters from the field lists
         $fromFieldList =~ s/\s+//g;
-        $toFieldList =~ s/\s+//g;
+        $toFieldList   =~ s/\s+//g;
 
         # Uppercase field lists
         $fromFieldList = uc($fromFieldList);

@@ -17,7 +17,7 @@ sub getUniqArray {
 
   # 1d array
   my @uniqLUE = JoinHero::getUniqArray((42, 42, 42, 42, 42));
-  my @oneLUE = (42);
+  my @oneLUE  = (42);
   is_deeply(\@oneLUE, \@uniqLUE, '1d uniq array test');
 
   # 2d array
@@ -29,7 +29,7 @@ sub getUniqArray {
                   [42, 'Life, the Universe and Everything']
   );
   my @uniq2dLUE = JoinHero::getUniqArray(@raw2dLUE);
-  my @one2dLUE = ([42, 'Life, the Universe and Everything']);
+  my @one2dLUE  = ([42, 'Life, the Universe and Everything']);
   is_deeply(\@one2dLUE, \@uniq2dLUE, '2d uniq array test');
 
   # 3d array

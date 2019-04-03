@@ -213,7 +213,7 @@ sub sqlGenerationS_SL_FKBasic {
   ok(whitespaceInsensitiveCompare($getJoinSQL_S_SL_FKExpectedSQL, $getJoinSQL_S_SL_FK));
 
   # Should get a very similar answer for the outer getJoinSQL sub since this fk is the only fk we loaded up
-  my $getOutputSQLParms = {pkComponents => $pk_01, fkComponents => $fk_01};
+  my $getOutputSQLParms    = {pkComponents => $pk_01, fkComponents => $fk_01};
   my $getOutputSQL_S_SL_FK = JoinHero::getOutputSQL($getJoinSQLParams);
   ok(whitespaceInsensitiveCompare("$getJoinSQL_S_SL_FKExpectedSQL\ncommit;\n", $getOutputSQL_S_SL_FK));
 
