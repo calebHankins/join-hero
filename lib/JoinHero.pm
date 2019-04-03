@@ -141,7 +141,7 @@ sub getKeyComponents {
 
         # Remove any whitespace characters from the field lists
         $fromFieldList =~ s/\s+//g;
-        $toFieldList   =~ s/\s+//g;
+        $toFieldList =~ s/\s+//g;
 
         # Uppercase field lists
         $fromFieldList = uc($fromFieldList);
@@ -243,14 +243,14 @@ sub getJoinTableSQL {
   $outputSQL .= qq{
   CREATE TABLE $martTableJoinTableName
   (
-      FROM_SCHEMA       VARCHAR2 (4000),
-      FROM_TABLE        VARCHAR2 (4000),
-      FROM_FIELD        VARCHAR2 (4000),
-      TO_SCHEMA         VARCHAR2 (4000),
-      TO_TABLE          VARCHAR2 (4000),
-      TO_FIELD          VARCHAR2 (4000),
+      FROM_SCHEMA       VARCHAR2 (100),
+      FROM_TABLE        VARCHAR2 (100),
+      FROM_FIELD        VARCHAR2 (100),
+      TO_SCHEMA         VARCHAR2 (100),
+      TO_TABLE          VARCHAR2 (100),
+      TO_FIELD          VARCHAR2 (100),
       FIELD_JOIN_ORD    NUMBER,
-      TYPE              VARCHAR2 (4000),
+      TYPE              VARCHAR2 (100),
       NOTES             VARCHAR2 (4000),
       CORE_FLG          VARCHAR2 (4000),
       PRIMARY KEY
@@ -279,12 +279,12 @@ sub getCardinalityTableSQL {
   $outputSQL .= qq{
   CREATE TABLE $martCardinalityTableName
   (
-    FROM_SCHEMA    VARCHAR2 (4000),
-    FROM_TABLE     VARCHAR2 (4000),
-    TO_SCHEMA      VARCHAR2 (4000),
-    TO_TABLE       VARCHAR2 (4000),
+    FROM_SCHEMA    VARCHAR2 (100),
+    FROM_TABLE     VARCHAR2 (100),
+    TO_SCHEMA      VARCHAR2 (100),
+    TO_TABLE       VARCHAR2 (100),
     CARDINALITY    VARCHAR2 (4000),
-    TYPE           VARCHAR2 (4000),
+    TYPE           VARCHAR2 (100),
     NOTES          VARCHAR2 (4000),
     CORE_FLG       VARCHAR2 (4000),
     PRIMARY KEY
