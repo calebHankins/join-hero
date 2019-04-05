@@ -28,7 +28,7 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smar
 
 ##--------------------------------------------------------------------------
 # Version info
-our $VERSION = '0.1.5';
+our $VERSION = '0.1.8';
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -136,6 +136,9 @@ sub getKeyComponents {
       # Store components if we have all the information that we will need
       if ($toTable and $toFieldList and $fkName and $fromTable and $fromFieldList) {
 
+        # Generating a key name that includes the from and to table name. Modeler tool allows for non-unique FK names...
+        my $fkKey = "$fkName-_-$fromTable-_-$toTable";
+
         # Remove any whitespace characters from the field lists
         $fromFieldList =~ s/\s+//g;
         $toFieldList   =~ s/\s+//g;
@@ -149,15 +152,16 @@ sub getKeyComponents {
         $toTable   = getCleanedObjectName($toTable);
 
         # Save components
-        $fkComponents->{$fkName}->{'fkName'}        = $fkName;
-        $fkComponents->{$fkName}->{'fromTable'}     = getTableName($fromTable);
-        $fkComponents->{$fkName}->{'fromFieldList'} = $fromFieldList;
-        $fkComponents->{$fkName}->{'toTable'}       = getTableName($toTable);
-        $fkComponents->{$fkName}->{'toFieldList'}   = $toFieldList;
+        $fkComponents->{$fkKey}->{'fkKey'}         = $fkKey;
+        $fkComponents->{$fkKey}->{'fkName'}        = $fkName;
+        $fkComponents->{$fkKey}->{'fromTable'}     = getTableName($fromTable);
+        $fkComponents->{$fkKey}->{'fromFieldList'} = $fromFieldList;
+        $fkComponents->{$fkKey}->{'toTable'}       = getTableName($toTable);
+        $fkComponents->{$fkKey}->{'toFieldList'}   = $toFieldList;
 
         # Split and store field names as array elements
-        @{$fkComponents->{$fkName}->{'fromFields'}} = split(',', $fromFieldList);
-        @{$fkComponents->{$fkName}->{'toFields'}}   = split(',', $toFieldList);
+        @{$fkComponents->{$fkKey}->{'fromFields'}} = split(',', $fromFieldList);
+        @{$fkComponents->{$fkKey}->{'toFields'}}   = split(',', $toFieldList);
 
         # Munge and set schema names using the table prefix
         my $fromSchema = getSchemaName($fromTable, \@supportedMarts);
@@ -168,13 +172,13 @@ sub getKeyComponents {
         if ($toSchema   && !$fromSchema) { $fromSchema = $toSchema; }
 
         # Save munged schema components
-        $fkComponents->{$fkName}->{'fromSchema'} = $fromSchema;
-        $fkComponents->{$fkName}->{'toSchema'}   = $toSchema;
+        $fkComponents->{$fkKey}->{'fromSchema'} = $fromSchema;
+        $fkComponents->{$fkKey}->{'toSchema'}   = $toSchema;
 
         # Calculate and store cardinality
-        $fkComponents->{$fkName}->{'cardinalityNORMAL'} = getJoinCardinality($pkComponents, $fkComponents->{$fkName});
-        $fkComponents->{$fkName}->{'cardinalityREVERSED'}
-          = getJoinCardinality($pkComponents, $fkComponents->{$fkName}, 'REVERSED');
+        $fkComponents->{$fkKey}->{'cardinalityNORMAL'} = getJoinCardinality($pkComponents, $fkComponents->{$fkKey});
+        $fkComponents->{$fkKey}->{'cardinalityREVERSED'}
+          = getJoinCardinality($pkComponents, $fkComponents->{$fkKey}, 'REVERSED');
       } ## end if ($toTable and $toFieldList...)
     } ## end if ($fk =~ /$fkComponentsRegEx/gms)
   } ## end for my $fk (@keyDDL)
@@ -249,7 +253,7 @@ sub getJoinSQL {
   $martCardinalityTableName //= 'MART_TABLE_JOIN_CARDINALITY';
   $coreFlg                  //= 'Y';
 
-  if ($verbose) { $logger->info("$subName Processing:$fkComponents->{$fkKey}->{fkName}...\n"); }
+  if ($verbose) { $logger->info("$subName Processing:$fkComponents->{$fkKey}->{fkKey}...\n"); }
   for my $typeString (@supportedTypes) {
 
     # A typeString is optionally a colon delimited string in the format app[:direction]
@@ -259,7 +263,7 @@ sub getJoinSQL {
 
     if ($verbose) {
       $logger->info(
-                 "$subName Processing:$fkComponents->{$fkKey}->{fkName} for type $type, direction $typeDirection...\n");
+                  "$subName Processing:$fkComponents->{$fkKey}->{fkKey} for type $type, direction $typeDirection...\n");
     }
 
     # App specific init
@@ -267,11 +271,13 @@ sub getJoinSQL {
     my $fromTable;
     my $toSchema;
     my $toTable;
+    my $directionNote = '';
     if ($typeDirection eq 'REVERSED') {
-      $fromSchema = $fkComponents->{$fkKey}->{'toSchema'};
-      $fromTable  = $fkComponents->{$fkKey}->{'toTable'};
-      $toSchema   = $fkComponents->{$fkKey}->{'fromSchema'};
-      $toTable    = $fkComponents->{$fkKey}->{'fromTable'};
+      $fromSchema    = $fkComponents->{$fkKey}->{'toSchema'};
+      $fromTable     = $fkComponents->{$fkKey}->{'toTable'};
+      $toSchema      = $fkComponents->{$fkKey}->{'fromSchema'};
+      $toTable       = $fkComponents->{$fkKey}->{'fromTable'};
+      $directionNote = " in $typeDirection mode";
     } ## end if ($typeDirection eq ...)
     else {
       $fromSchema = $fkComponents->{$fkKey}->{'fromSchema'};
@@ -300,7 +306,7 @@ sub getJoinSQL {
     if ($deleteExisting) {
       my $deleteSQLMartTableJoin = qq{
       DELETE FROM $martTableJoinTableName A
-      WHERE 
+      WHERE
         A.TYPE = '$type' AND
         NVL(A.CORE_FLG,'NULL') = '$coreFlg' AND
         A.FROM_SCHEMA = '$fromSchema' AND
@@ -318,7 +324,7 @@ sub getJoinSQL {
     for my $fkToField (@{$fkComponents->{$fkKey}->{'toFields'}}) {
       if ($verbose) {
         $logger->info(
-                    "$subName Processing:$fkComponents->{$fkKey}->{fkName} for type $type and toField $fkToField...\n");
+                     "$subName Processing:$fkComponents->{$fkKey}->{fkKey} for type $type and toField $fkToField...\n");
       }
       my $fkFromField  = @{$fkComponents->{$fkKey}->{'fromFields'}}[$i];    # Grab the matching from field
       my $fieldJoinOrd = $i + 1;
@@ -346,7 +352,7 @@ sub getJoinSQL {
           '$toField' as TO_FIELD,
           $fieldJoinOrd as FIELD_JOIN_ORD,
           '$type' as TYPE,
-          'AUTO-GENERATED BY Unregistered JoinHero 2 using $fkKey' as NOTES,
+          'AUTO-GENERATED BY Unregistered JoinHero 2 using $fkComponents->{$fkKey}->{fkName}$directionNote' as NOTES,
           '$coreFlg' as CORE_FLG
         FROM DUAL};
 
@@ -364,7 +370,7 @@ sub getJoinSQL {
       WITH C AS
         ( SELECT COUNT (*) AS rec_count
           FROM $martTableJoinTableName A
-          WHERE     
+          WHERE
             A.TYPE = '$type' AND
             NVL(A.CORE_FLG,'NULL') = '$coreFlg' AND
             A.FROM_SCHEMA = '$fromSchema' AND
@@ -391,23 +397,23 @@ sub getJoinSQL {
       ) B
       ON (  A.TYPE = B.TYPE
         and NVL(A.CORE_FLG,'NULL1') = NVL(B.CORE_FLG,'NULL2')
-        and A.FROM_SCHEMA = B.FROM_SCHEMA 
-        and A.TO_SCHEMA = B.TO_SCHEMA 
-        and A.FROM_TABLE = B.FROM_TABLE 
-        and A.TO_TABLE = B.TO_TABLE 
+        and A.FROM_SCHEMA = B.FROM_SCHEMA
+        and A.TO_SCHEMA = B.TO_SCHEMA
+        and A.FROM_TABLE = B.FROM_TABLE
+        and A.TO_TABLE = B.TO_TABLE
         and A.FIELD_JOIN_ORD = B.FIELD_JOIN_ORD)
-      WHEN NOT MATCHED THEN 
+      WHEN NOT MATCHED THEN
       INSERT (
-        FROM_SCHEMA, FROM_TABLE, FROM_FIELD, TO_SCHEMA, TO_TABLE, 
+        FROM_SCHEMA, FROM_TABLE, FROM_FIELD, TO_SCHEMA, TO_TABLE,
         TO_FIELD, FIELD_JOIN_ORD, TYPE, NOTES, CORE_FLG)
       VALUES (
-        B.FROM_SCHEMA, B.FROM_TABLE, B.FROM_FIELD, B.TO_SCHEMA, B.TO_TABLE, 
+        B.FROM_SCHEMA, B.FROM_TABLE, B.FROM_FIELD, B.TO_SCHEMA, B.TO_TABLE,
         B.TO_FIELD, B.FIELD_JOIN_ORD, B.TYPE, B.NOTES, B.CORE_FLG)};
 
     if ($updateExisting) {
       $mergeSQLMartTableJoin .= qq{
         WHEN MATCHED THEN
-        UPDATE SET 
+        UPDATE SET
           A.FROM_FIELD = B.FROM_FIELD,
           A.TO_FIELD = B.TO_FIELD,
           A.NOTES = B.NOTES};
@@ -425,7 +431,7 @@ sub getJoinSQL {
     if ($deleteExisting) {
       my $deleteSQLMartTableJoinCardinality = qq{
       DELETE FROM $martCardinalityTableName A
-      WHERE 
+      WHERE
         A.TYPE = '$type' AND
         NVL(A.CORE_FLG,'NULL') = '$coreFlg' AND
         A.FROM_SCHEMA = '$fromSchema' AND
@@ -450,29 +456,29 @@ sub getJoinSQL {
           '$toTable' as TO_TABLE,
           '$cardinality' as CARDINALITY,
           '$type' as TYPE,
-          'AUTO-GENERATED BY Unregistered JoinHero 2 using $fkKey' as NOTES,
+          'AUTO-GENERATED BY Unregistered JoinHero 2 using $fkComponents->{$fkKey}->{fkName}$directionNote' as NOTES,
           '$coreFlg' as CORE_FLG
         FROM DUAL
       ) B
       ON (
         A.TYPE = B.TYPE
         and NVL(A.CORE_FLG,'NULL1') = NVL(B.CORE_FLG,'NULL2')
-        and A.FROM_SCHEMA = B.FROM_SCHEMA 
-        and A.TO_SCHEMA = B.TO_SCHEMA 
-        and A.FROM_TABLE = B.FROM_TABLE 
+        and A.FROM_SCHEMA = B.FROM_SCHEMA
+        and A.TO_SCHEMA = B.TO_SCHEMA
+        and A.FROM_TABLE = B.FROM_TABLE
         and A.TO_TABLE = B.TO_TABLE)
-      WHEN NOT MATCHED THEN 
+      WHEN NOT MATCHED THEN
       INSERT (
-        FROM_SCHEMA, FROM_TABLE, TO_SCHEMA, TO_TABLE, CARDINALITY, 
+        FROM_SCHEMA, FROM_TABLE, TO_SCHEMA, TO_TABLE, CARDINALITY,
         TYPE, NOTES, CORE_FLG)
       VALUES (
-        B.FROM_SCHEMA, B.FROM_TABLE, B.TO_SCHEMA, B.TO_TABLE, B.CARDINALITY, 
+        B.FROM_SCHEMA, B.FROM_TABLE, B.TO_SCHEMA, B.TO_TABLE, B.CARDINALITY,
         B.TYPE, B.NOTES, B.CORE_FLG)};
 
     if ($updateExisting) {
       $mergeSQLMartTableJoinCardinality .= qq{
         WHEN MATCHED THEN
-        UPDATE SET 
+        UPDATE SET
           A.CARDINALITY = B.CARDINALITY,
           A.NOTES = B.NOTES};
     } ## end if ($updateExisting)
@@ -586,6 +592,49 @@ sub getSchemaName {
 
   return $schemaName;
 } ## end sub getSchemaName
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
+# Lookup and return a particular join based on a from and to table and supplied components
+# Returns:
+#   A hash ref with a key of 'join' with a value of the requested join
+#   and a key of direction with a value of the join direction (based on the supplied from/to relative to the join)
+sub getJoinFromComponents {
+  my ($getJoinFromComponentsParams) = @_;
+  my $subName                       = (caller(0))[3];
+  my $join                          = {};
+  my $direction;
+
+  # Alias our params for easier use
+  my $fromTable    = $getJoinFromComponentsParams->{fromTable};
+  my $toTable      = $getJoinFromComponentsParams->{toTable};
+  my $pkComponents = $getJoinFromComponentsParams->{pkComponents};
+  my $fkComponents = $getJoinFromComponentsParams->{fkComponents};
+
+  # Search for our requested join (NORMAL and REVERSE style)
+  for my $key (sort keys %{$fkComponents}) {
+
+    # Prefer 'NORMAL' style joins if we can find them
+    if ($fkComponents->{$key}->{fromTable} eq $fromTable and $fkComponents->{$key}->{toTable} eq $toTable) {
+      $join      = $fkComponents->{$key};
+      $direction = 'NORMAL';
+      last;
+    }
+
+    # Otherwise, we'll take a 'REVERSED' join if we have to
+    elsif ($fkComponents->{$key}->{toTable} eq $fromTable and $fkComponents->{$key}->{fromTable} eq $toTable) {
+      $join      = $fkComponents->{$key};
+      $direction = 'REVERSED';
+      last;
+    }
+  } ## end for my $key (sort keys ...)
+
+  if (!defined($direction)) {
+    $ibm::logger->warn("$subName could not find a join for fromTable:$fromTable toTable:$toTable");
+  }
+
+  return {join => $join, direction => $direction};
+} ## end sub getJoinFromComponents
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
