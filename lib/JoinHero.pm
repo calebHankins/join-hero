@@ -28,7 +28,7 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smar
 
 ##--------------------------------------------------------------------------
 # Version info
-our $VERSION = '0.1.8';
+our $VERSION = '0.1.9';
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -201,8 +201,16 @@ sub getOutputSQL {
   my $pkComponents    = $getOutputSQLParams->{pkComponents};
   my $fkComponents    = $getOutputSQLParams->{fkComponents};
   my $commitThreshold = $getOutputSQLParams->{commitThreshold};
+  my $createTables    = $getOutputSQLParams->{createTables};
   $commitThreshold //= 1000;    # Default if not supplied
 
+  # Generate CREATE TABLE statements
+  if ($createTables) {
+    $outputSQL .= getJoinTableSQL($getOutputSQLParams);
+    $outputSQL .= getCardinalityTableSQL($getOutputSQLParams);
+  }
+
+  # Step through each FK and generate SQL for each. Append to working SQL variable each iteration
   for my $key (sort keys %{$fkComponents}) {
     my $joinSQL = getJoinSQL($key, $getOutputSQLParams);
     if ($joinSQL) {
@@ -221,6 +229,75 @@ sub getOutputSQL {
 
   return $outputSQL;
 } ## end sub getOutputSQL
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
+# Generate and return SQl for the table that will contain the joins and join fields
+sub getJoinTableSQL {
+  my ($getJoinTableSQLParams) = @_;
+  my $subName                 = (caller(0))[3];
+  my $outputSQL               = '';
+
+  my $martTableJoinTableName = $getJoinTableSQLParams->{martTableJoinTableName};
+
+  $outputSQL .= qq{
+  CREATE TABLE $martTableJoinTableName
+  (
+      FROM_SCHEMA       VARCHAR2 (100),
+      FROM_TABLE        VARCHAR2 (100),
+      FROM_FIELD        VARCHAR2 (100),
+      TO_SCHEMA         VARCHAR2 (100),
+      TO_TABLE          VARCHAR2 (100),
+      TO_FIELD          VARCHAR2 (100),
+      FIELD_JOIN_ORD    NUMBER,
+      TYPE              VARCHAR2 (100),
+      NOTES             VARCHAR2 (4000),
+      CORE_FLG          VARCHAR2 (4000),
+      PRIMARY KEY
+          (TYPE,
+          FROM_SCHEMA,
+          TO_SCHEMA,
+          FROM_TABLE,
+          TO_TABLE,
+          FIELD_JOIN_ORD)
+  )};
+  $outputSQL .= ";\n";
+
+  return $outputSQL;
+} ## end sub getJoinTableSQL
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
+# Generate and return SQl for the table that will contain the join cardinality
+sub getCardinalityTableSQL {
+  my ($getCardinalityTableSQLParams) = @_;
+  my $subName                        = (caller(0))[3];
+  my $outputSQL                      = '';
+
+  my $martCardinalityTableName = $getCardinalityTableSQLParams->{martCardinalityTableName};
+
+  $outputSQL .= qq{
+  CREATE TABLE $martCardinalityTableName
+  (
+    FROM_SCHEMA    VARCHAR2 (100),
+    FROM_TABLE     VARCHAR2 (100),
+    TO_SCHEMA      VARCHAR2 (100),
+    TO_TABLE       VARCHAR2 (100),
+    CARDINALITY    VARCHAR2 (4000),
+    TYPE           VARCHAR2 (100),
+    NOTES          VARCHAR2 (4000),
+    CORE_FLG       VARCHAR2 (4000),
+    PRIMARY KEY
+        (TYPE,
+          FROM_SCHEMA,
+          TO_SCHEMA,
+          FROM_TABLE,
+          TO_TABLE)
+  )};
+  $outputSQL .= ";\n";
+
+  return $outputSQL;
+} ## end sub getCardinalityTableSQL
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -723,11 +800,14 @@ sub getFilepathParts {
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
-# Get unique array curtesy of perlfaq4
+# Get unique array
+# Serializing, adding serialized version to a hash and checking against the hash
+# to see if we've seen the element before.  curtesy of perlfaq4 + Dumper for serialization
 sub getUniqArray {
   my (@array) = @_;
   my %seen = ();
-  my @unique = grep { !$seen{$_}++ } @array;
+  my @unique = grep { !$seen{Dumper($_)}++ } @array;
+
   return @unique;
 } ## end sub getUniqArray
 ##--------------------------------------------------------------------------
