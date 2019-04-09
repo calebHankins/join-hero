@@ -6,19 +6,19 @@ WriteMakefile
   'EXE_FILES' => [
                    'script/join-hero'
                  ],
+  'NAME' => 'JoinHero',
   'VERSION_FROM' => 'lib/JoinHero.pm',
   'PREREQ_PM' => {
                    'Cwd' => '0',
-                   'Pod::Usage' => '0',
                    'File::Path' => '0',
-                   'File::Glob' => '0',
+                   'Getopt::Long' => '0',
+                   'Pod::Usage' => '0',
                    'Log::Log4perl' => '0',
                    'IO::Handle' => '0',
-                   'Data::Dumper' => '0',
-                   'Getopt::Long' => '0'
+                   'File::Glob' => '0',
+                   'Data::Dumper' => '0'
                  },
   'PL_FILES' => {},
-  'INSTALLDIRS' => 'site',
-  'NAME' => 'JoinHero'
+  'INSTALLDIRS' => 'site'
 )
 ;
