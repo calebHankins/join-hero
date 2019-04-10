@@ -15,7 +15,7 @@ name: JoinHero
 provides:
   JoinHero:
     file: lib/JoinHero.pm
-    version: v0.2.1
+    version: v0.2.0
   JoinHero::Logger:
     file: lib/JoinHero/Logger.pm
 requires:
