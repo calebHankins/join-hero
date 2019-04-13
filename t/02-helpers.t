@@ -6,7 +6,7 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smar
 
 use JoinHero;
 
-plan tests => 7;
+plan tests => 10;
 
 checkRequiredParm();
 signOff();
@@ -14,9 +14,48 @@ getUniqArray();
 createExportFile();
 
 sub getUniqArray {
+
+  # 1d array
   my @uniqLUE = JoinHero::getUniqArray((42, 42, 42, 42, 42));
   my @oneLUE  = (42);
-  is_deeply(@oneLUE, @uniqLUE);
+  is_deeply(\@oneLUE, \@uniqLUE, '42 1d uniq array test');
+
+  # 2d array
+  my @raw2dLUE = (
+                  [42, 'Life, the Universe and Everything'],
+                  [42, 'Life, the Universe and Everything'],
+                  [42, 'Life, the Universe and Everything'],
+                  [42, 'Life, the Universe and Everything'],
+                  [42, 'Life, the Universe and Everything']
+  );
+  my @uniq2dLUE = JoinHero::getUniqArray(@raw2dLUE);
+  my @one2dLUE  = ([42, 'Life, the Universe and Everything']);
+  is_deeply(\@one2dLUE, \@uniq2dLUE, 'LUE 2d uniq array test');
+
+  # Dedupe Good test
+  my @rawGoodTest = (
+    ['GOOD', 'TEST'], ['GOOD', 'TEST'], ['TEST', 'GOOD'], ['TEST', 'GOOD'],
+    [1, 'GOOD']
+
+  );
+  my @uniqGoodTest = JoinHero::getUniqArray(@rawGoodTest);
+  my @oneGoodTest  = (['GOOD', 'TEST'], ['TEST', 'GOOD'], [1, 'GOOD']);
+  is_deeply(\@uniqGoodTest, \@oneGoodTest, 'Good 2d uniq array test');
+
+  # 3d array
+  my @raw3dLUE = (
+                  [42, 'Life, the Universe and Everything', ['My', 'Lord', 'is',   'that', 'legal?']],
+                  [42, 'Life, the Universe and Everything', ['My', 'Lord', 'is',   'that', 'legal?']],
+                  [42, 'Life, the Universe and Everything', ['My', 'Lord', 'is',   'that', 'legal?']],
+                  [42, 'Life, the Universe and Everything', ['My', 'Lord', 'is',   'that', 'legal?']],
+                  [42, 'Life, the Universe and Everything', ['I',  'will', 'make', 'it',   'legal']]
+  );
+  my @uniq3dLUE = JoinHero::getUniqArray(@raw3dLUE);
+  my @one3dLUE = (
+                  [42, 'Life, the Universe and Everything', ['My', 'Lord', 'is',   'that', 'legal?']],
+                  [42, 'Life, the Universe and Everything', ['I',  'will', 'make', 'it',   'legal']]
+  );
+  is_deeply(\@one3dLUE, \@uniq3dLUE, 'LUE 3d uniq array test');
 
   return;
 } ## end sub getUniqArray

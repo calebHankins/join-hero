@@ -8,7 +8,7 @@ use JoinHero;
 
 # $JoinHero::verbose = 1;    # Uncomment this and run tests with --verbose to ease debugging
 
-plan tests => 34;
+plan tests => 37;
 
 diag("Testing DDL Parsing for JoinHero $JoinHero::VERSION, Perl $], $^X");
 
@@ -30,6 +30,7 @@ pkBreakOut();
 getJoinCardinality();
 sqlGenerationS_SL_FKBasic();
 getJoinFromComponents();
+tableCreation();
 
 sub getSchemaName {
 
@@ -219,12 +220,83 @@ sub sqlGenerationS_SL_FKBasic {
   return;
 } ## end sub sqlGenerationS_SL_FKBasic
 
+sub tableCreation {
+  my $subName = (caller(0))[3];
+
+  my $actualSQL = JoinHero::getOutputSQL(
+          {createTables => 1, martTableJoinTableName => 'JJJ.SAUCY_MTJ', martCardinalityTableName => 'JJJ.SAUCY_MTJC'});
+
+  my $expectedSQL = q{
+  CREATE TABLE JJJ.SAUCY_MTJ
+  (
+      FROM_SCHEMA       VARCHAR2 (100),
+      FROM_TABLE        VARCHAR2 (100),
+      FROM_FIELD        VARCHAR2 (100),
+      TO_SCHEMA         VARCHAR2 (100),
+      TO_TABLE          VARCHAR2 (100),
+      TO_FIELD          VARCHAR2 (100),
+      FIELD_JOIN_ORD    NUMBER,
+      TYPE              VARCHAR2 (100),
+      NOTES             VARCHAR2 (4000),
+      CORE_FLG          VARCHAR2 (4000),
+      PRIMARY KEY
+          (TYPE,
+          FROM_SCHEMA,
+          TO_SCHEMA,
+          FROM_TABLE,
+          TO_TABLE,
+          FIELD_JOIN_ORD)
+  );
+
+  CREATE TABLE JJJ.SAUCY_MTJC
+  (
+    FROM_SCHEMA    VARCHAR2 (100),
+    FROM_TABLE     VARCHAR2 (100),
+    TO_SCHEMA      VARCHAR2 (100),
+    TO_TABLE       VARCHAR2 (100),
+    CARDINALITY    VARCHAR2 (4000),
+    TYPE           VARCHAR2 (100),
+    NOTES          VARCHAR2 (4000),
+    CORE_FLG       VARCHAR2 (4000),
+    PRIMARY KEY
+        (TYPE,
+          FROM_SCHEMA,
+          TO_SCHEMA,
+          FROM_TABLE,
+          TO_TABLE)
+  );
+
+  commit;
+   };
+
+  ok(whitespaceInsensitiveCompare($actualSQL, $expectedSQL), "$subName checking for expected table creation SQL");
+
+  # If we didn't ask for create table sql, we should not see it in the output
+  my $expectedSQLNoCreate = q{ commit; };
+  my $actualSQLNoCreate
+    = JoinHero::getOutputSQL({martTableJoinTableName => 'JJJ.SAUCY_MTJ', martCardinalityTableName => 'JJJ.SAUCY_MTJC'});
+  ok(whitespaceInsensitiveCompare($expectedSQLNoCreate, $actualSQLNoCreate),
+     "$subName checking for expected no table creation SQL (flag not set)");
+
+  # Test what happens when we give getOutputSQL nothing
+  my $expectedSQLNothing = q{ commit; };
+  my $actualSQLNothing   = JoinHero::getOutputSQL();
+  ok(whitespaceInsensitiveCompare($expectedSQLNothing, $actualSQLNothing),
+     "$subName checking for expected SQL (no arguments)");
+
+  return;
+} ## end sub tableCreation
+
 sub whitespaceInsensitiveCompare {
   my ($string1, $string2) = @_;
-  my $stripWhitespaceRegEx = 'tr/ \n//dr';
-  my $cleaned1             = $string1 =~ $stripWhitespaceRegEx;
-  my $cleaned2             = $string2 =~ $stripWhitespaceRegEx;
-  my $compare              = $cleaned1 eq $cleaned2 ? 1 : 0;
+
+  my $temp1 = $string1;
+  $temp1 =~ s/\s+//g;
+  my $temp2 = $string2;
+  $temp2 =~ s/\s+//g;
+
+  my $compare = 0;
+  if ($temp1 eq $temp2) { $compare = 1; }
 
   return $compare;
 } ## end sub whitespaceInsensitiveCompare

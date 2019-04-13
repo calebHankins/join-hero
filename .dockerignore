@@ -11,16 +11,16 @@
 *.tape
 *.temp
 *.zip
-\debug
+/debug
 *.bk
-\Cheap Hack
+/Cheap Hack
 *.csv
 *.txt
-\datamodeler
-\exp
-\scratch
-\bin
-\logs
+/datamodeler
+/exp
+/scratch
+/bin
+/logs
 join_us.sql
 
 

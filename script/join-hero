@@ -44,6 +44,7 @@ my @supportedMarts           = ('SAMPLE');
 my $outputFilepath           = '';
 my $martTableJoinTableName   = 'MART_TABLE_JOIN';
 my $martCardinalityTableName = 'MART_TABLE_JOIN_CARDINALITY';
+my $createTables             = '';
 my $commitThreshold          = 1000;
 my $coreFlg                  = 'Y';
 my $allowUnknownSchema       = '';
@@ -59,6 +60,7 @@ my $rc = GetOptions(
   'd|deleteExisting'           => \$deleteExisting,
   'martTableJoinTableName=s'   => \$martTableJoinTableName,
   'martCardinalityTableName=s' => \$martCardinalityTableName,
+  'createTables'               => \$createTables,
   'commitThreshold=i'          => \$commitThreshold,
   'coreFlg=s'                  => \$coreFlg,
   'allowUnknownSchema'         => \$allowUnknownSchema,
@@ -99,7 +101,8 @@ my $outputFileContents = JoinHero::getOutputSQL(
                                                  coreFlg                  => $coreFlg,
                                                  supportedTypes           => \@supportedTypes,
                                                  supportedMarts           => \@supportedMarts,
-                                                 allowUnknownSchema       => $allowUnknownSchema
+                                                 allowUnknownSchema       => $allowUnknownSchema,
+                                                 createTables             => $createTables
                                                 }
 );
 
@@ -165,6 +168,9 @@ sub logScriptConfig {
   $JoinHero::logger->info("  martTableJoinTableName:  [$martTableJoinTableName]");
   $JoinHero::logger->info("  martCardinalityTableName:[$martCardinalityTableName]");
 
+  $createTables
+    ? $JoinHero::logger->info("  createTables:            [Enabled]")
+    : $JoinHero::logger->info("  createTables:            [Disabled]");
   $allowUnknownSchema
     ? $JoinHero::logger->info("  allowUnknownSchema:      [Enabled]")
     : $JoinHero::logger->info("  allowUnknownSchema:      [Disabled]");
@@ -217,20 +223,21 @@ join-hero
   'i|file|inputFilepath=s'       DDL File input file with key info [required]
   'o|out|outputFilepath=s'       Output filepath for metadata sql [required]
   'types=s'                      Comma delimited list in the form app[:direction]. Will generate one
-                                  set of metadata per app. If direction is 'REVERSED', 'from' and 'to' 
+                                  set of metadata per app. If direction is 'REVERSED', 'from' and 'to'
                                   direction is flipped. Defaults to 'SAMPLE'.
   'marts|martPrefixes=s'         Comma delimited list of prefixes for schema derivation [optional]
   'u|updateExisting'             Update existing metadata [optional]
   'd|deleteExisting'             Delete existing metadata [optional]
-  'martTableJoinTableName=s'     Override for MTJ table name [optional]
-  'martCardinalityTableName=s'   Override for Cardinality table name [optional]
-  'commitThreshold=i'            Statements to execute before issuing a commit [optional]
-  'coreFlg=s'                    Set metadata as 'Core' [optional]
-  'version'                      Print version information.
+  'martTableJoinTableName=s'     Override for MTJ table name. Defaults to MART_TABLE_JOIN [optional]
+  'martCardinalityTableName=s'   Override for Cardinality table name. Defaults to MART_TABLE_JOIN_CARDINALITY [optional]
+  'createTables'                 Generate CREATE TABLE SQL. Defaults to disabled [optional]
+  'commitThreshold=i'            Statements to execute before issuing a commit. Defaults to 1000 [optional]
+  'coreFlg=s'                    Set metadata as 'Core'. Defaults to 'Y' [optional]
   'allowUnknownSchema'           Create metadata for entities where the schema could not be determined
   't|testMode'                   Skip call to create output file(s) but print all of the other information.
   'v|verbose'                    Print more verbose output.
-  
+
+  'version'                      Print version information.
   'help'                         Print brief help information.
   'man'                          Read the manual, includes examples.
 
@@ -241,6 +248,6 @@ join-hero -i './Export/model.ddl' -o './update_sql/full_insert.sql' -v > ./logs/
 
 # Override target tables to research tables, include delete flag for cleanup
 join-hero -i '.\ddl\model.ddl' -o './update_sql/full_update.sql' --martTableJoinTableName 'TEMP_MERGED_MTJ' --martCardinalityTableName 'TEMP_MERGED_MTJ_CARD' -d
-  
+
 =cut
 ##---------------------------------------------------------------------------
