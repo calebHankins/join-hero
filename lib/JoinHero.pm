@@ -24,11 +24,12 @@ use strict;
 use File::Glob ':glob';    # Perl extension for BSD glob routine
 use Data::Dumper;
 use File::Path qw(make_path);
+use Graph;
 no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smartmatch warnings
 
 ##--------------------------------------------------------------------------
 # Version info
-our $VERSION = '0.2.0';
+our $VERSION = '0.2.1';
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
