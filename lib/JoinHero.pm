@@ -254,13 +254,57 @@ sub getGraphJoinSQL {
   my $uncommittedTransactions = $getGraphJoinSQLParams->{uncommittedTransactions};
   $uncommittedTransactions //= 0;    # Default if not supplied
 
-  if (@{$getGraphJoinSQLParams->{graphTypes}}) {
+  # Alias parms for ease of use
+  my @types = @{$getGraphJoinSQLParams->{graphTypes}};
 
-    my $g = getGraph();
+  if (@types) {
 
-    # todo
+    # Generate a graph
+    my $g = getGraph($getGraphJoinSQLParams);
 
-  } ## end if (@{$getGraphJoinSQLParams...})
+    # Loop over graph types and collect join SQL
+    for my $typeString (@types) {
+      if ($verbose) { $logger->info("$subName processing: $typeString"); }
+
+      my $transform = {};
+      $transform->{typeString} = $typeString;
+
+      # A graph typeString is a colon delimited string in the format app[:transform]
+      my ($app, $transformString) = split(':', $typeString);
+      $transform->{app} = $app;
+      $transformString = uc($transformString);
+
+      # Split apart our transform into its components
+      my $transformTypeRegEx         = '(STAR|SNOWFLAKE)';
+      my $transformToTableDelimRegEx = '(->){1}';
+      my $tableNameRegEx             = '([".a-zA-Z0-9_\$\@]+)';
+      my $tableToMaxDepthDelimRegEx  = '(->)?';
+      my $maxDepthRegEx              = '([0-9]*)';
+      my $graphGrokVoltronRegEx      = q{};
+      $graphGrokVoltronRegEx .= $transformTypeRegEx;
+      $graphGrokVoltronRegEx .= $transformToTableDelimRegEx;
+      $graphGrokVoltronRegEx .= $tableNameRegEx;
+      $graphGrokVoltronRegEx .= $tableToMaxDepthDelimRegEx;
+      $graphGrokVoltronRegEx .= $maxDepthRegEx;
+
+      if ($transformString =~ /$graphGrokVoltronRegEx/gms) {
+        $transform->{transformType} = $1;
+        $transform->{tableName}     = $3;
+        $transform->{maxDepth}      = $5;
+      }
+
+      # Set default maxDepth if we didn't get one in the transform string
+      if ($transform->{transformType} eq 'STAR') { $transform->{maxDepth} = 1; }
+      if ($transform->{transformType} eq 'SNOWFLAKE' and !$transform->{maxDepth} > -1) {
+        $transform->{maxDepth} = 20;
+      }
+
+      # Print debug info
+      if ($verbose) { $logger->info("$subName \$transform: " . Dumper($transform)); }
+
+    } ## end for my $typeString (@types)
+
+  } ## end if (@types)
   else {
     if ($verbose) {
       $logger->info("$subName No graphTypes detected, skipping graph based join SQL generation.");
@@ -281,7 +325,7 @@ sub getGraph {
   my $g  = Graph->new(directed => 1);          # A directed graph.
   my $fk = $getGraphParams->{fkComponents};    # Alias fkComponents for ease of use
 
-  if (!defined %{$fk}) {
+  if (!defined $fk) {
     $logger->error("$subName was asked to generate a graph but wasn't given a hashref containing valid fkComponents!");
     return $g;
   }
