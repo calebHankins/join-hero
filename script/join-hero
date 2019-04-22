@@ -226,14 +226,15 @@ join-hero
 
                                   If transform is 'REVERSED', 'from' and 'to' join direction is flipped.
 
-                                  If transform is 'STAR->FACT_TABLE' metadata for a star schema centered around
-                                  the table 'FACT_TABLE' is generated.
-                                  See https://en.wikipedia.org/wiki/Star_schema
-
                                   If transform is 'SNOWFLAKE->FACT_TABLE[->MAX_PATH_LENGTH]' metadata for a snowflake schema
                                   centered around the table 'FACT_TABLE' is generated. Optional MAX_PATH_LENGTH integer which
-                                  will stop adding joins on fact table children after reaching length cap.
+                                  will stop adding joins on fact table children after reaching a path length cap.
+                                  Default MAX_PATH_LENGTH is 5.
                                   See https://en.wikipedia.org/wiki/Snowflake_schema
+
+                                  If transform is 'STAR->FACT_TABLE' metadata for a star schema centered around
+                                  the table 'FACT_TABLE' is generated. A star is a special case of a snowflake.
+                                  See https://en.wikipedia.org/wiki/Star_schema
 
                                   Will generate one set of metadata per app. Defaults to 'SAMPLE' and 'NORMAL' / no transform.
 

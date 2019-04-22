@@ -122,7 +122,7 @@ sub getKeyComponents {
     } ## end if ($pk =~ /$pkComponentsRegEx/gms)
   } ## end for my $pk (@keyDDL)
 
-  if ($verbose) { $logger->info("$subName Primary and unique key components:\n" . Dumper($pkComponents)); }
+  # if ($verbose) { $logger->info("$subName Primary and unique key components:\n" . Dumper($pkComponents)); }
 
   # Munge our FKs into components that we can use
   my $fkComponents = {};    # Hash ref to hold our broken out component parts
@@ -184,7 +184,7 @@ sub getKeyComponents {
     } ## end if ($fk =~ /$fkComponentsRegEx/gms)
   } ## end for my $fk (@keyDDL)
 
-  if ($verbose) { $logger->info("$subName Foreign keys components:\n" . Dumper($fkComponents)); }
+  # if ($verbose) { $logger->info("$subName Foreign keys components:\n" . Dumper($fkComponents)); }
 
   return ($pkComponents, $fkComponents);
 } ## end sub getKeyComponents
@@ -276,7 +276,7 @@ sub getGraphJoinSQL {
 
       # Split apart our transform into its components
       my $transformTypeRegEx         = '(STAR|SNOWFLAKE)';
-      my $transformToTableDelimRegEx = '(->){1}';
+      my $transformToTableDelimRegEx = '(->)';
       my $tableNameRegEx             = '([".a-zA-Z0-9_\$\@]+)';
       my $tableToMaxDepthDelimRegEx  = '(->)?';
       my $maxDepthRegEx              = '([0-9]*)';
@@ -287,21 +287,38 @@ sub getGraphJoinSQL {
       $graphGrokVoltronRegEx .= $tableToMaxDepthDelimRegEx;
       $graphGrokVoltronRegEx .= $maxDepthRegEx;
 
+      # Set default maxDepth
+      $transform->{maxDepth} = 5;
+
+      # Use regex to save off relevant transform components
       if ($transformString =~ /$graphGrokVoltronRegEx/gms) {
         $transform->{transformType} = $1;
         $transform->{tableName}     = $3;
         $transform->{maxDepth}      = $5;
       }
 
-      # Set default maxDepth if we didn't get one in the transform string
+      # Stars are a special case and have a cap of 1
       if ($transform->{transformType} eq 'STAR') { $transform->{maxDepth} = 1; }
-      if ($transform->{transformType} eq 'SNOWFLAKE' && !$transform->{maxDepth} > -1) {
-        $transform->{maxDepth} = 20;
-      }
 
       # Print debug info
       if ($verbose) { $logger->info("$subName \$transform: " . Dumper($transform)); }
 
+      # Fetch the join list
+      my @joinList = recursiveGetSuccessors(
+                               {fullGraph => $g, v => $transform->{tableName}, iterationCap => $transform->{maxDepth}});
+
+      # Dedupe join list
+      my @joinListUniq = getUniqArray(@joinList);
+
+      # Get SQL for the joins
+      # Shallow copy to avoid mutation
+      my %getSQLForJoinPathsParms = %{$getGraphJoinSQLParams};
+      $getSQLForJoinPathsParms{transform} = $transform;
+      $getSQLForJoinPathsParms{paths}     = \@joinListUniq;
+
+      # if ($verbose) { $logger->info("$subName \%getSQLForJoinPathsParms" . Dumper(%getSQLForJoinPathsParms)) }
+
+      $outputSQL .= getSQLForJoinPaths(\%getSQLForJoinPathsParms);
     } ## end for my $typeString (@types)
 
   } ## end if (@types)
@@ -315,6 +332,139 @@ sub getGraphJoinSQL {
 
   return $outputSQL;
 } ## end sub getGraphJoinSQL
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
+#  Recursively traverse a given graph building pairs of joins from visited edges
+sub recursiveGetSuccessors {
+  my ($recursiveGetSuccessorsParms) = @_;
+  my $subName = (caller(0))[3];
+
+  # Alias parms for ease of use
+  my $fullGraph        = $recursiveGetSuccessorsParms->{fullGraph};
+  my $v                = $recursiveGetSuccessorsParms->{v};
+  my $parents          = $recursiveGetSuccessorsParms->{parents};
+  my $currentIteration = $recursiveGetSuccessorsParms->{currentIteration};
+  my $iterationCap     = $recursiveGetSuccessorsParms->{iterationCap};
+
+  $parents //= [$v];    # The whole chain that brung us
+  my @parents = @$parents;
+
+  @parents = getUniqArray(@parents);
+  $currentIteration //= 1;    # Assume we're the first unless told otherwise
+  $iterationCap     //= 5;    # Don't recurse further than this by default
+
+  if ($verbose) {
+    $logger->info(
+          "$subName for:$v. \$currentIteration: $currentIteration out of a capped $iterationCap and a parent list of:\n"
+            . Dumper(@parents));
+  }
+  my @cleansedSuccessors = ();
+  my @joinList           = ();
+
+  if ($currentIteration > $iterationCap) {
+
+    if ($verbose) {
+      $logger->info(
+                  "$subName exceeded max iteration cap, bailing out $currentIteration out of a capped $iterationCap\n");
+    }
+    return @joinList;
+  } ## end if ($currentIteration ...)
+
+  my @successors = $fullGraph->successors($v);
+
+  # Add the valid successors for $v
+  for my $successor (@successors) {
+    if ($successor ne $v and !($successor ~~ @parents)) {    # Don't loop back
+      push(@joinList, [$v, $successor]);
+      push(@cleansedSuccessors, $successor);
+    }
+
+    else {
+      if ($verbose) {
+        $logger->info("$subName $v successor $successor skipped due to not meeting cleansedSuccessor status.\n");
+      }
+    }
+
+  } ## end for my $successor (@successors)
+
+  # Now for each of the successors, need to calculate their successors
+  @cleansedSuccessors = sort @cleansedSuccessors;    # Sort these so it is deterministic
+
+  if ($verbose) {
+    $logger->info("$subName for:$v \@cleansedSuccessors:\n" . Dumper(@cleansedSuccessors));
+    $logger->info("$subName for:$v \@joinList before recursion:\n" . Dumper(@joinList));
+  }
+
+  # Then go down the rabbit hole for $v's kids if we haven't hit the cap yet
+  if ($currentIteration + 1 < $iterationCap) {
+    for my $cleansedSuccessor (@cleansedSuccessors) {
+      if ($verbose) {
+        $logger->info("$subName down the rabbit hole for $v \$cleansedSuccessor:$cleansedSuccessor\n");
+      }
+      my @kidsParents = @parents;
+      push(@kidsParents, $v);
+      push(
+           @joinList,
+           recursiveGetSuccessors(
+                                  {
+                                   fullGraph        => $fullGraph,
+                                   v                => $cleansedSuccessor,
+                                   parents          => \@kidsParents,
+                                   currentIteration => $currentIteration + 1,
+                                   iterationCap     => $iterationCap
+                                  }
+           )
+      );
+    } ## end for my $cleansedSuccessor...
+    if ($verbose) { $logger->info("$subName for:$v \@joinList after recursion:\n" . Dumper(@joinList)) }
+  } ## end if ($currentIteration ...)
+
+  return @joinList;
+
+} ## end sub recursiveGetSuccessors
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
+# Given a 2d array of join paths, return a SQL string of join metadata
+sub getSQLForJoinPaths {
+  my ($getSQLForJoinPathsParms) = @_;
+  my $subName                   = (caller(0))[3];
+  my $outputSQL                 = '';
+
+  # Alias our params for easier use
+  my $paths = $getSQLForJoinPathsParms->{paths};
+
+  for my $path (@{${paths}}) {
+    my @joinPair = @{$path};
+
+    my $join = getJoinFromComponents(
+                                     {
+                                      fromTable    => $joinPair[0],
+                                      toTable      => $joinPair[1],
+                                      pkComponents => $getSQLForJoinPathsParms->{pkComponents},
+                                      fkComponents => $getSQLForJoinPathsParms->{fkComponents}
+                                     }
+    );
+
+    my %getJoinSQLParms = %{$getSQLForJoinPathsParms};
+
+    # set overrideTypes for this join
+    my $typeString = "$getJoinSQLParms{transform}->{app}:$join->{direction}";
+    $getJoinSQLParms{overrideTypes} = [$typeString];
+
+    # if ($verbose) {
+    #   $logger->info("$subName \$getJoinSQLParms{overrideTypes}" . Dumper($getJoinSQLParms{overrideTypes}));
+    # }
+
+    my $joinSQL = getJoinSQL($join->{join}->{fkKey}, \%getJoinSQLParms);
+
+    $outputSQL .= $joinSQL;
+
+  } ## end for my $path (@{${paths...}})
+
+  return $outputSQL;
+} ## end sub getSQLForJoinPaths
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -483,8 +633,13 @@ sub getJoinSQL {
   my @supportedMarts;
 
   # Set defaults for things we didn't get but need
-  if    (defined $getJoinSQLParams->{simpleTypes})    { @types          = @{$getJoinSQLParams->{simpleTypes}}; }
-  elsif (defined $getJoinSQLParams->{supportedTypes}) { @types          = @{$getJoinSQLParams->{supportedTypes}}; }
+  if (defined $getJoinSQLParams->{overrideTypes}) {
+    if (@{$getJoinSQLParams->{overrideTypes}} > 0) { @types = @{$getJoinSQLParams->{overrideTypes}}; }
+  }
+  elsif (defined $getJoinSQLParams->{simpleTypes}) {
+    if (@{$getJoinSQLParams->{simpleTypes}} > 0) { @types = @{$getJoinSQLParams->{simpleTypes}}; }
+  }
+  elsif (@{$getJoinSQLParams->{supportedTypes}} > 0)  { @types          = @{$getJoinSQLParams->{supportedTypes}}; }
   if    (!@types)                                     { @types          = ('SAMPLE'); }
   if    (defined $getJoinSQLParams->{supportedMarts}) { @supportedMarts = @{$getJoinSQLParams->{supportedMarts}}; }
   if    (!@supportedMarts)                            { @supportedMarts = ('SAMPLE'); }
@@ -532,11 +687,10 @@ sub getJoinSQL {
 
     # Validate schema, set default if empty
     if (!defined($toSchema) || !defined($fromSchema)) {
-      if ($verbose) { $logger->info("$subName Setting default schema\n"); }
       $toSchema   = 'UNKNOWN';
       $fromSchema = 'UNKNOWN';
       if (!$allowUnknownSchema) { return; }    # Leave early unless we allow UNKNOWN schema
-    } ## end if (!defined($toSchema...))
+    }
 
     # Exit early if the schema don't match, no cross mart joins
     if ($toSchema ne $fromSchema) {
