@@ -211,20 +211,69 @@ sub getOutputSQL {
     $outputSQL .= getCardinalityTableSQL($getOutputSQLParams);
   }
 
-  # Step through each FK and generate SQL for each. Append to working SQL variable each iteration
-  for my $key (sort keys %{$fkComponents}) {
-    my $joinSQL = getJoinSQL($key, $getOutputSQLParams);
-    if ($joinSQL) {
-      $outputSQL .= $joinSQL;
-      $uncommittedTransactions += () = $joinSQL =~ /;/g;    # Count semicolons to determine transactions added
-      if ($verbose) { $logger->info("$subName uncommittedTransactions: $uncommittedTransactions\n"); }
-      if ($uncommittedTransactions > $commitThreshold) {    # If we've reached the threshold, commit and reset count
-        $logger->info("$subName Reached transaction threshold, inserting commit\n");
-        $outputSQL .= "\ncommit;\n";
-        $uncommittedTransactions = 0;
-      }
-    } ## end if ($joinSQL)
-  } ## end for my $key (sort keys ...)
+  # Check list of transforms, branch depending on transform needs
+  my @supportedTypes;
+  my @simpleTypes;
+  my @graphTypes;
+  if (defined $getOutputSQLParams->{supportedTypes}) { @supportedTypes = @{$getOutputSQLParams->{supportedTypes}}; }
+  if (!@supportedTypes) { @supportedTypes = ('SAMPLE'); }
+
+  # A type is optionally a colon delimited string in the format app[:transform]
+  for my $typeString (@supportedTypes) {
+    my ($type, $transform) = split(':', $typeString);
+    $transform //= 'NORMAL';    # Default transform to NORMAL if not specified
+    $transform = uc($transform);
+
+    # For SNOWFLAKE and STAR transforms, switch to graph based generation. Else run through simple path
+    my $graphRegEx = q{star|snowflake};
+    if   ($transform =~ /$graphRegEx/gmi) { push(@graphTypes,  $typeString); }
+    else                                  { push(@simpleTypes, $typeString); }
+  } ## end for my $typeString (@supportedTypes)
+
+  if ($verbose) {
+    $logger->info(
+            "$subName \@supportedTypes: [@supportedTypes], \@simpleTypes: [@simpleTypes], \@graphTypes: [@graphTypes]");
+  }
+
+  # Generate SQL for graph types
+  if (@graphTypes) {
+    for my $graphTypeString (@graphTypes) {
+
+      # Pass to graph based SQL generation
+      # todo
+    }
+  } ## end if (@graphTypes)
+  else {
+    if ($verbose) {
+      $logger->info("$subName No graphTypes detected, skipping graph SQL generation.");
+    }
+  }
+
+  # Generate SQL for simple types
+  my $getJoinSQLParams = $getOutputSQLParams;    # Start with base set of params that we were called with
+  $getOutputSQLParams->{supportedTypes} = \@simpleTypes;    # Override to only generate simple types
+  if (@{$getOutputSQLParams->{supportedTypes}}) {
+
+    # Step through each FK and generate SQL for each. Append to working SQL variable each iteration
+    for my $key (sort keys %{$fkComponents}) {
+      my $joinSQL = getJoinSQL($key, $getOutputSQLParams);
+      if ($joinSQL) {
+        $outputSQL .= $joinSQL;
+        $uncommittedTransactions += () = $joinSQL =~ /;/g;    # Count semicolons to determine transactions added
+        if ($verbose) { $logger->info("$subName uncommittedTransactions: $uncommittedTransactions\n"); }
+        if ($uncommittedTransactions > $commitThreshold) {    # If we've reached the threshold, commit and reset count
+          $logger->info("$subName Reached transaction threshold, inserting commit\n");
+          $outputSQL .= "\ncommit;\n";
+          $uncommittedTransactions = 0;
+        }
+      } ## end if ($joinSQL)
+    } ## end for my $key (sort keys ...)
+  } ## end if (@{$getOutputSQLParams...})
+  else {
+    if ($verbose) {
+      $logger->info("$subName No simpleTypes detected, skipping simple SQL generation.");
+    }
+  }
 
   $outputSQL .= "\ncommit;\n";
 
@@ -338,6 +387,9 @@ sub getJoinSQL {
     my ($type, $typeDirection) = split(':', $typeString);
     $typeDirection //= 'NORMAL';    # Default typeDirection to normal if not specified
     $typeDirection = uc($typeDirection);
+
+    # Leave early if we have an unsupported typeDirection
+    if ($typeDirection ne 'NORMAL' and $typeDirection ne 'REVERSED') { next; }
 
     if ($verbose) {
       $logger->info(
@@ -708,7 +760,7 @@ sub getJoinFromComponents {
   } ## end for my $key (sort keys ...)
 
   if (!defined($direction)) {
-    $ibm::logger->warn("$subName could not find a join for fromTable:$fromTable toTable:$toTable");
+    $logger->warn("$subName could not find a join for fromTable:$fromTable toTable:$toTable");
   }
 
   return {join => $join, direction => $direction};
