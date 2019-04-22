@@ -196,17 +196,9 @@ sub getOutputSQL {
   my ($getOutputSQLParams) = @_;
   my $subName = (caller(0))[3];
   my $outputSQL;
-  my $uncommittedTransactions = 0;
-
-  # Alias our params for easier use
-  my $pkComponents    = $getOutputSQLParams->{pkComponents};
-  my $fkComponents    = $getOutputSQLParams->{fkComponents};
-  my $commitThreshold = $getOutputSQLParams->{commitThreshold};
-  my $createTables    = $getOutputSQLParams->{createTables};
-  $commitThreshold //= 1000;    # Default if not supplied
 
   # Generate CREATE TABLE statements
-  if ($createTables) {
+  if ($getOutputSQLParams->{createTables}) {
     $outputSQL .= getJoinTableSQL($getOutputSQLParams);
     $outputSQL .= getCardinalityTableSQL($getOutputSQLParams);
   }
@@ -214,7 +206,9 @@ sub getOutputSQL {
   # Check list of transforms, branch depending on transform needs
   my @supportedTypes;
   my @simpleTypes;
+  $getOutputSQLParams->{simpleTypes} = \@simpleTypes;
   my @graphTypes;
+  $getOutputSQLParams->{graphTypes} = \@graphTypes;
   if (defined $getOutputSQLParams->{supportedTypes}) { @supportedTypes = @{$getOutputSQLParams->{supportedTypes}}; }
   if (!@supportedTypes) { @supportedTypes = ('SAMPLE'); }
 
@@ -230,33 +224,69 @@ sub getOutputSQL {
     else                                  { push(@simpleTypes, $typeString); }
   } ## end for my $typeString (@supportedTypes)
 
+  # Print type breakdown for debugging
   if ($verbose) {
     $logger->info(
             "$subName \@supportedTypes: [@supportedTypes], \@simpleTypes: [@simpleTypes], \@graphTypes: [@graphTypes]");
   }
 
-  # Generate SQL for graph types
-  if (@graphTypes) {
-    for my $graphTypeString (@graphTypes) {
+  # Generate SQL for graph based types
+  $outputSQL .= getGraphJoinSQL($getOutputSQLParams);    # Append simple join SQL
 
-      # Pass to graph based SQL generation
-      # todo
-    }
-  } ## end if (@graphTypes)
+  # Generate SQL for simple types
+  $outputSQL .= getSimpleJoinSQL($getOutputSQLParams);    # Append simple join SQL
+
+  $outputSQL .= "\ncommit;\n";
+
+  return $outputSQL;
+} ## end sub getOutputSQL
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
+# Generate and return join SQL for all relevant graph based types
+sub getGraphJoinSQL {
+  my ($getGraphJoinSQLParams) = @_;
+  my $subName                 = (caller(0))[3];
+  my $outputSQL               = '';
+
+  my $commitThreshold = $getGraphJoinSQLParams->{commitThreshold};
+  $commitThreshold //= 1000;    # Default if not supplied
+  my $uncommittedTransactions = $getGraphJoinSQLParams->{uncommittedTransactions};
+  $uncommittedTransactions //= 0;    # Default if not supplied
+
+  if (@{$getGraphJoinSQLParams->{graphTypes}}) {
+
+    # todo
+  }
   else {
     if ($verbose) {
-      $logger->info("$subName No graphTypes detected, skipping graph SQL generation.");
+      $logger->info("$subName No graphTypes detected, skipping graph based join SQL generation.");
     }
   }
 
-  # Generate SQL for simple types
-  my $getJoinSQLParams = $getOutputSQLParams;    # Start with base set of params that we were called with
-  $getOutputSQLParams->{supportedTypes} = \@simpleTypes;    # Override to only generate simple types
-  if (@{$getOutputSQLParams->{supportedTypes}}) {
+  $getGraphJoinSQLParams->{uncommittedTransactions} = $uncommittedTransactions;
+
+  return $outputSQL;
+} ## end sub getGraphJoinSQL
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
+# Generate and return join SQL for all relevant simple types
+sub getSimpleJoinSQL {
+  my ($getSimpleJoinSQLParams) = @_;
+  my $subName                  = (caller(0))[3];
+  my $outputSQL                = '';
+
+  my $commitThreshold = $getSimpleJoinSQLParams->{commitThreshold};
+  $commitThreshold //= 1000;    # Default if not supplied
+  my $uncommittedTransactions = $getSimpleJoinSQLParams->{uncommittedTransactions};
+  $uncommittedTransactions //= 0;    # Default if not supplied
+
+  if (@{$getSimpleJoinSQLParams->{simpleTypes}}) {
 
     # Step through each FK and generate SQL for each. Append to working SQL variable each iteration
-    for my $key (sort keys %{$fkComponents}) {
-      my $joinSQL = getJoinSQL($key, $getOutputSQLParams);
+    for my $key (sort keys %{$getSimpleJoinSQLParams->{fkComponents}}) {
+      my $joinSQL = getJoinSQL($key, $getSimpleJoinSQLParams);
       if ($joinSQL) {
         $outputSQL .= $joinSQL;
         $uncommittedTransactions += () = $joinSQL =~ /;/g;    # Count semicolons to determine transactions added
@@ -268,17 +298,17 @@ sub getOutputSQL {
         }
       } ## end if ($joinSQL)
     } ## end for my $key (sort keys ...)
-  } ## end if (@{$getOutputSQLParams...})
+  } ## end if (@{$getSimpleJoinSQLParams...})
   else {
     if ($verbose) {
-      $logger->info("$subName No simpleTypes detected, skipping simple SQL generation.");
+      $logger->info("$subName No simpleTypes detected, skipping simple join SQL generation.");
     }
   }
 
-  $outputSQL .= "\ncommit;\n";
+  $getSimpleJoinSQLParams->{uncommittedTransactions} = $uncommittedTransactions;
 
   return $outputSQL;
-} ## end sub getOutputSQL
+} ## end sub getSimpleJoinSQL
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -366,22 +396,23 @@ sub getJoinSQL {
   my $martCardinalityTableName = $getJoinSQLParams->{martCardinalityTableName};
   my $coreFlg                  = $getJoinSQLParams->{coreFlg};
   my $allowUnknownSchema       = $getJoinSQLParams->{allowUnknownSchema};
-  my @supportedTypes;
+  my @types;
   my @supportedMarts;
 
   # Set defaults for things we didn't get but need
-  if (defined $getJoinSQLParams->{supportedTypes}) { @supportedTypes = @{$getJoinSQLParams->{supportedTypes}}; }
-  if (!@supportedTypes)                            { @supportedTypes = ('SAMPLE'); }
-  if (defined $getJoinSQLParams->{supportedMarts}) { @supportedMarts = @{$getJoinSQLParams->{supportedMarts}}; }
-  if (!@supportedMarts)                            { @supportedMarts = ('SAMPLE'); }
+  if    (defined $getJoinSQLParams->{simpleTypes})    { @types          = @{$getJoinSQLParams->{simpleTypes}}; }
+  elsif (defined $getJoinSQLParams->{supportedTypes}) { @types          = @{$getJoinSQLParams->{supportedTypes}}; }
+  if    (!@types)                                     { @types          = ('SAMPLE'); }
+  if    (defined $getJoinSQLParams->{supportedMarts}) { @supportedMarts = @{$getJoinSQLParams->{supportedMarts}}; }
+  if    (!@supportedMarts)                            { @supportedMarts = ('SAMPLE'); }
   $deleteExisting           //= 0;
   $updateExisting           //= 0;
   $martTableJoinTableName   //= 'MART_TABLE_JOIN';
   $martCardinalityTableName //= 'MART_TABLE_JOIN_CARDINALITY';
   $coreFlg                  //= 'Y';
 
-  if ($verbose) { $logger->info("$subName Processing:$fkComponents->{$fkKey}->{fkKey}...\n"); }
-  for my $typeString (@supportedTypes) {
+  if ($verbose) { $logger->info("$subName Processing:$fkComponents->{$fkKey}->{fkKey} for types @types...\n"); }
+  for my $typeString (@types) {
 
     # A typeString is optionally a colon delimited string in the format app[:direction]
     my ($type, $typeDirection) = split(':', $typeString);
@@ -621,7 +652,7 @@ sub getJoinSQL {
 
     $outputSQL .= $mergeSQLMartTableJoinCardinality;
 
-  } ## end for my $typeString (@supportedTypes)
+  } ## end for my $typeString (@types)
 
   return $outputSQL;
 } ## end sub getJoinSQL
