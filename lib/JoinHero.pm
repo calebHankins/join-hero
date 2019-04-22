@@ -639,10 +639,12 @@ sub getJoinSQL {
   elsif (defined $getJoinSQLParams->{simpleTypes}) {
     if (@{$getJoinSQLParams->{simpleTypes}} > 0) { @types = @{$getJoinSQLParams->{simpleTypes}}; }
   }
-  elsif (@{$getJoinSQLParams->{supportedTypes}} > 0)  { @types          = @{$getJoinSQLParams->{supportedTypes}}; }
-  if    (!@types)                                     { @types          = ('SAMPLE'); }
-  if    (defined $getJoinSQLParams->{supportedMarts}) { @supportedMarts = @{$getJoinSQLParams->{supportedMarts}}; }
-  if    (!@supportedMarts)                            { @supportedMarts = ('SAMPLE'); }
+  elsif (defined $getJoinSQLParams->{supportedTypes}) {
+    if (@{$getJoinSQLParams->{supportedTypes}} > 0) { @types = @{$getJoinSQLParams->{supportedTypes}}; }
+  }
+  if (!@types)                                     { @types          = ('SAMPLE'); }
+  if (defined $getJoinSQLParams->{supportedMarts}) { @supportedMarts = @{$getJoinSQLParams->{supportedMarts}}; }
+  if (!@supportedMarts)                            { @supportedMarts = ('SAMPLE'); }
   $deleteExisting           //= 0;
   $updateExisting           //= 0;
   $martTableJoinTableName   //= 'MART_TABLE_JOIN';
