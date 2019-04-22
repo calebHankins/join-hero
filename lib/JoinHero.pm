@@ -375,7 +375,7 @@ sub recursiveGetSuccessors {
 
   # Add the valid successors for $v
   for my $successor (@successors) {
-    if ($successor ne $v and !($successor ~~ @parents)) {    # Don't loop back
+    if ($successor ne $v && !($successor ~~ @parents)) {    # Don't loop back
       push(@joinList, [$v, $successor]);
       push(@cleansedSuccessors, $successor);
     }
