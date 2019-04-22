@@ -256,8 +256,11 @@ sub getGraphJoinSQL {
 
   if (@{$getGraphJoinSQLParams->{graphTypes}}) {
 
+    my $g = getGraph();
+
     # todo
-  }
+
+  } ## end if (@{$getGraphJoinSQLParams...})
   else {
     if ($verbose) {
       $logger->info("$subName No graphTypes detected, skipping graph based join SQL generation.");
@@ -268,6 +271,42 @@ sub getGraphJoinSQL {
 
   return $outputSQL;
 } ## end sub getGraphJoinSQL
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
+sub getGraph {
+  my ($getGraphParams) = @_;
+  my $subName = (caller(0))[3];
+
+  my $g  = Graph->new(directed => 1);          # A directed graph.
+  my $fk = $getGraphParams->{fkComponents};    # Alias fkComponents for ease of use
+
+  if (!defined %{$fk}) {
+    $logger->error("$subName was asked to generate a graph but wasn't given a hashref containing valid fkComponents!");
+    return $g;
+  }
+
+  # Loop over every fk, add vertexes and edges to our graph
+  while (my ($key, $value) = each %{$fk}) {
+    if (!defined($value->{fromSchema})) { next; }
+
+    # Set edge info and weight based on NORMAL direction
+    my $edgeWeightNormal = $value->{cardinalityNORMAL} eq 'ONE' ? 1 : 10;    # Weight paths to prefer 1-1 joins
+    my %tempAttr = %{$value};    # make a shallow copy of this hash ref so we don't mutate it
+    $tempAttr{weight}    = $edgeWeightNormal;    # Assign a weight
+    $tempAttr{direction} = 'NORMAL';             # Assign a 'direction'
+    $g->set_edge_attributes($value->{toTable}, $value->{fromTable}, \%tempAttr);
+
+    # Set edge info and weight based on REVERSED direction
+    my $edgeWeightReversed = $value->{cardinalityREVERSED} eq 'ONE' ? 1 : 10;    # Weight paths to prefer 1-1 joins
+    my %tempAttrReversed = %{$value};    # make a shallow copy of this hash ref so we don't mutate it
+    $tempAttrReversed{weight}    = $edgeWeightReversed;    # Assign a weight
+    $tempAttrReversed{direction} = 'REVERSED';             # Assign a 'direction'
+    $g->set_edge_attributes($value->{fromTable}, $value->{toTable}, \%tempAttrReversed);
+  } ## end while (my ($key, $value) ...)
+
+  return $g;
+} ## end sub getGraph
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
