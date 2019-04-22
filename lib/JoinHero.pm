@@ -295,7 +295,7 @@ sub getGraphJoinSQL {
 
       # Set default maxDepth if we didn't get one in the transform string
       if ($transform->{transformType} eq 'STAR') { $transform->{maxDepth} = 1; }
-      if ($transform->{transformType} eq 'SNOWFLAKE' and !$transform->{maxDepth} > -1) {
+      if ($transform->{transformType} eq 'SNOWFLAKE' && !$transform->{maxDepth} > -1) {
         $transform->{maxDepth} = 20;
       }
 
