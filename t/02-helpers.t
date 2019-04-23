@@ -6,12 +6,13 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smar
 
 use JoinHero;
 
-plan tests => 10;
+plan tests => 12;
 
 checkRequiredParm();
 signOff();
 getUniqArray();
 createExportFile();
+stripQuotes();
 
 sub getUniqArray {
 
@@ -96,8 +97,26 @@ sub createExportFile {
   my $testWriteContents = 'testing createExportFile';
   JoinHero::createExportFile($testWriteContents, $testWritePath);
   my $writeStatus = (-f $testWritePath) ? 1 : 0;
-  if ($writeStatus) { unlink $testWritePath or $JoinHero::logger->warn("Could not unlink file [$testWritePath]"); }
+  if ($writeStatus) {
+
+    # Go ahead and test the load too while we have this file created
+    openAndLoadFile($testWritePath, $testWriteContents);
+    unlink $testWritePath or $JoinHero::logger->warn("Could not unlink file [$testWritePath]");
+  } ## end if ($writeStatus)
   ok($writeStatus);
 
   return;
 } ## end sub createExportFile
+
+sub stripQuotes {
+  my $quotedString    = q{"hello"};
+  my $notQuotedString = q{hello};
+  my $strippedString  = JoinHero::stripQuotes($quotedString);
+  ok($strippedString eq $notQuotedString);
+} ## end sub stripQuotes
+
+sub openAndLoadFile {
+  my ($testReadPath, $testReadContents) = @_;
+  my $loadedContents = JoinHero::openAndLoadFile($testReadPath);
+  ok($testReadContents eq $loadedContents);
+}
