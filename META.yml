@@ -15,12 +15,13 @@ name: JoinHero
 provides:
   JoinHero:
     file: lib/JoinHero.pm
-    version: v0.2.1
+    version: v0.2.2
   JoinHero::Logger:
     file: lib/JoinHero/Logger.pm
 requires:
   Cwd: '0'
   Data::Dumper: '0'
+  English: '0'
   File::Glob: '0'
   File::Path: '0'
   Getopt::Long: '0'
@@ -31,5 +32,5 @@ requires:
   perl: v5.10.1
 resources:
   license: http://apache.org/licenses/LICENSE-2.0
-version: v0.2.1
+version: v0.2.2
 x_serialization_backend: 'CPAN::Meta::YAML version 0.018'

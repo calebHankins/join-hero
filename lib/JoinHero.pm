@@ -24,12 +24,12 @@ use strict;
 use File::Glob ':glob';    # Perl extension for BSD glob routine
 use Data::Dumper;
 use File::Path qw(make_path);
-use Graph;
+use English qw(-no_match_vars);
 no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smartmatch warnings
 
 ##--------------------------------------------------------------------------
 # Version info
-our $VERSION = '0.2.1';
+our $VERSION = '0.2.2';
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -257,6 +257,14 @@ sub getGraphJoinSQL {
   # Alias parms for ease of use
   my @types = @{$getGraphJoinSQLParams->{graphTypes}};
 
+  # If we don't have the modules we need, skip these types
+  eval { require Graph; };
+  if ($EVAL_ERROR) {
+    my $msg = "Graph module required for the following types, skipping: [@types]";
+    $logger->warn($msg);
+    return $outputSQL;
+  }
+
   if (@types) {
 
     # Generate a graph
@@ -472,6 +480,14 @@ sub getSQLForJoinPaths {
 sub getGraph {
   my ($getGraphParams) = @_;
   my $subName = (caller(0))[3];
+
+  # If we don't have the modules we need, skip
+  eval { require Graph; };
+  if ($EVAL_ERROR) {
+    my $msg = "Graph module required for graph generation, skipping";
+    $logger->warn($msg);
+    return;
+  }
 
   my $g  = Graph->new(directed => 1);          # A directed graph.
   my $fk = $getGraphParams->{fkComponents};    # Alias fkComponents for ease of use

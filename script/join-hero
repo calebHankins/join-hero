@@ -233,7 +233,8 @@ join-hero
                                   See https://en.wikipedia.org/wiki/Snowflake_schema
 
                                   If transform is 'STAR->FACT_TABLE' metadata for a star schema centered around
-                                  the table 'FACT_TABLE' is generated. A star is a special case of a snowflake.
+                                  the table 'FACT_TABLE' is generated. A star is a special case of a snowflake
+                                  with a path length set to 1.
                                   See https://en.wikipedia.org/wiki/Star_schema
 
                                   Will generate one set of metadata per app. Defaults to 'SAMPLE' and 'NORMAL' / no transform.
