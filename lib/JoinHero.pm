@@ -468,6 +468,7 @@ sub getSQLForJoinPaths {
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
+# Use fkComponents to produce a weighted and direct graph
 sub getGraph {
   my ($getGraphParams) = @_;
   my $subName = (caller(0))[3];
