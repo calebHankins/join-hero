@@ -9,13 +9,14 @@ use JoinHero;
 
 # $JoinHero::verbose = 1;    # Uncomment this and run tests with --verbose to ease debugging
 
-plan tests => 10;
-
 # Skip these tests if we don't have the graph library
 eval { require Graph; };
 if ($EVAL_ERROR) {
   my $msg = 'Graph required to check graph based functionality';
   plan(skip_all => $msg);
+}
+else {
+  plan tests => 10;
 }
 
 getGraph();
