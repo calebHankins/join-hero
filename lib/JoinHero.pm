@@ -295,9 +295,6 @@ sub getGraphJoinSQL {
       $graphGrokVoltronRegEx .= $tableToMaxDepthDelimRegEx;
       $graphGrokVoltronRegEx .= $maxDepthRegEx;
 
-      # Set default maxDepth
-      $transform->{maxDepth} = 5;
-
       # Use regex to save off relevant transform components
       if ($transformString =~ /$graphGrokVoltronRegEx/gms) {
         $transform->{transformType} = $1;
@@ -307,6 +304,13 @@ sub getGraphJoinSQL {
 
       # Stars are a special case and have a cap of 1
       if ($transform->{transformType} eq 'STAR') { $transform->{maxDepth} = 1; }
+
+      # Set default snowflake maxDepth if we didn't get an override
+      if ($transform->{transformType} eq 'SNOWFLAKE') {
+        if (!$transform->{maxDepth} > 0) {
+          $transform->{maxDepth} = 5;
+        }
+      }
 
       # Print debug info
       if ($verbose) { $logger->info("$subName \$transform: " . Dumper($transform)); }
@@ -360,7 +364,9 @@ sub recursiveGetSuccessors {
 
   @parents = getUniqArray(@parents);
   $currentIteration //= 1;    # Assume we're the first unless told otherwise
-  $iterationCap     //= 5;    # Don't recurse further than this by default
+  if (!$currentIteration > 0) { $currentIteration = 1; }
+  $iterationCap //= 5;        # Don't recurse further than this by default
+  if (!$iterationCap > 0) { $iterationCap = 5; }
 
   if ($verbose) {
     $logger->info(
