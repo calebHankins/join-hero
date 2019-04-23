@@ -397,7 +397,7 @@ sub recursiveGetSuccessors {
   }
 
   # Then go down the rabbit hole for $v's kids if we haven't hit the cap yet
-  if ($currentIteration + 1 < $iterationCap) {
+  if ($currentIteration + 1 <= $iterationCap) {
     for my $cleansedSuccessor (@cleansedSuccessors) {
       if ($verbose) {
         $logger->info("$subName down the rabbit hole for $v \$cleansedSuccessor:$cleansedSuccessor\n");
