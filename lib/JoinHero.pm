@@ -347,6 +347,8 @@ sub getGraphJoinSQL {
       $getSQLForJoinPathsParms{paths}     = \@joinListUniq;
 
       $outputSQL .= getSQLForJoinPaths(\%getSQLForJoinPathsParms);
+
+      $logger->info("$subName join SQL generation for $typeString complete.");
     } ## end for my $typeString (@types)
 
   } ## end if (@types)

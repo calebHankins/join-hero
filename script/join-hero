@@ -90,6 +90,8 @@ my $inputFileContents = JoinHero::openAndLoadFile($inputFilepath);
 # Parse DDL Source file into usable components
 my ($pk, $fk) = JoinHero::getKeyComponents($inputFileContents, \@supportedMarts, $inferEmptySchema);
 
+$JoinHero::logger->info("Input file analyzed, procedding to join SQL generation.");
+
 # Use our component list to construct some oracle merge statements
 my $outputFileContents = JoinHero::getOutputSQL(
                                                 {
