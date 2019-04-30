@@ -43,7 +43,7 @@ sub getGraphJoinSQL {
 
   my $g = getGraph({fkComponents => $fk_01});
 
-  my $getGraphJoinSQLParamsStar = {fkComponents => $fk_01, graphTypes => ['JJJ:STAR->STORES']};
+  my $getGraphJoinSQLParamsStar = {fkComponents => $fk_01, graphTypes => ['JJJ:STAR->JJJ.STORES']};
 
   my $outputGraphJoinSQL = JoinHero::getGraphJoinSQL($getGraphJoinSQLParamsStar);
 
@@ -204,7 +204,7 @@ sub getGraphJoinSQL {
         B.TYPE, B.NOTES, B.CORE_FLG);
   };
 
-  my $getGraphJoinSQLParamsSnowflake    = {fkComponents => $fk_01, graphTypes => ['JJJ:SNOWFLAKE->STORES']};
+  my $getGraphJoinSQLParamsSnowflake    = {fkComponents => $fk_01, graphTypes => ['JJJ:SNOWFLAKE->JJJ.STORES']};
   my $outputGraphJoinSQLSnowflakeStores = JoinHero::getGraphJoinSQL($getGraphJoinSQLParamsSnowflake);
   ok(whitespaceInsensitiveCompare($expectedGraphJoinSQLSnowflakeStores, $outputGraphJoinSQLSnowflakeStores),
      "$subName outputGraphJoinSQLSnowflakeStores output matches expected value");
@@ -222,10 +222,10 @@ sub getGraph {
   # Check edges
   my @ue = $g->unique_edges;
   $JoinHero::logger->info("$subName \@ue: " . JoinHero::Dumper(@ue));
-  my $expectedEdge1 = ['STORE_LOCATIONS',     'STORES'];
-  my $expectedEdge2 = ['STORES',              'STORE_LOCATIONS'];
-  my $expectedEdge3 = ['LOCATION_PREF_SMELL', 'STORE_LOCATIONS'];
-  my $expectedEdge4 = ['STORE_LOCATIONS',     'LOCATION_PREF_SMELL'];
+  my $expectedEdge1 = ['JJJ.STORE_LOCATIONS',     'JJJ.STORES'];
+  my $expectedEdge2 = ['JJJ.STORES',              'JJJ.STORE_LOCATIONS'];
+  my $expectedEdge3 = ['JJJ.LOCATION_PREF_SMELL', 'JJJ.STORE_LOCATIONS'];
+  my $expectedEdge4 = ['JJJ.STORE_LOCATIONS',     'JJJ.LOCATION_PREF_SMELL'];
 
   my $edge1Match = 0;
   my $edge2Match = 0;
@@ -245,8 +245,8 @@ sub getGraph {
   # Check vertices
   my @uv = $g->unique_vertices;
   $JoinHero::logger->info("$subName \@uv: " . JoinHero::Dumper(@uv));
-  my $expectedVertex1 = 'STORE_LOCATIONS';
-  my $expectedVertex2 = 'STORES';
+  my $expectedVertex1 = 'JJJ.STORE_LOCATIONS';
+  my $expectedVertex2 = 'JJJ.STORES';
   ok($expectedVertex1 ~~ @uv, "$subName Expected vertex 1 found");
   ok($expectedVertex2 ~~ @uv, "$subName Expected vertex 2 found");
 

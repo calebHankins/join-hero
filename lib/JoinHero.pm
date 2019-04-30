@@ -29,7 +29,7 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smar
 
 ##--------------------------------------------------------------------------
 # Version info
-our $VERSION = '0.2.2';
+our $VERSION = '0.2.3';
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -46,7 +46,7 @@ our $verbose = 0;    # Default to not verbose
 ##---------------------------------------------------------------------------
 # Capture and save valuable components in the supplied DDL file
 sub getKeyComponents {
-  my ($rawDDL, $supportedMartsRef) = @_;
+  my ($rawDDL, $supportedMartsRef, $inferEmptySchema) = @_;
   $supportedMartsRef //= [];    # If we didn't get this argument, default to an empty array ref
   my @supportedMarts = @$supportedMartsRef;
   my $subName        = (caller(0))[3];
@@ -168,13 +168,31 @@ sub getKeyComponents {
         my $fromSchema = getSchemaName($fromTable, \@supportedMarts);
         my $toSchema   = getSchemaName($toTable,   \@supportedMarts);
 
-        # If we got one schema but not the other, set the empty one using the populated one
-        if ($fromSchema && !$toSchema)   { $toSchema   = $fromSchema; }
-        if ($toSchema   && !$fromSchema) { $fromSchema = $toSchema; }
+        # If asked, and we got one schema in a pair but not the other, set the empty one using the populated one
+        if ($inferEmptySchema) {
+          if ($fromSchema && !$toSchema)   { $toSchema   = $fromSchema; }
+          if ($toSchema   && !$fromSchema) { $fromSchema = $toSchema; }
+        }
 
         # Save munged schema components
         $fkComponents->{$fkKey}->{'fromSchema'} = $fromSchema;
         $fkComponents->{$fkKey}->{'toSchema'}   = $toSchema;
+
+        # Assemble the fully qualified to and from table names (with schema if we have them)
+        my $toTableFullName;
+        if ($toSchema) {
+          $toTableFullName = "$fkComponents->{$fkKey}->{'toSchema'}.$fkComponents->{$fkKey}->{'toTable'}";
+        }
+        else { $toTableFullName = $fkComponents->{$fkKey}->{'toTable'} }
+        my $fromTableFullName;
+        if ($fromSchema) {
+          $fromTableFullName = "$fkComponents->{$fkKey}->{'fromSchema'}.$fkComponents->{$fkKey}->{'fromTable'}";
+        }
+        else { $fromTableFullName = $fkComponents->{$fkKey}->{'fromTable'} }
+
+        # Save munged full table names
+        $fkComponents->{$fkKey}->{'toTableFullName'}   = $toTableFullName;
+        $fkComponents->{$fkKey}->{'fromTableFullName'} = $fromTableFullName;
 
         # Calculate and store cardinality
         $fkComponents->{$fkKey}->{'cardinalityNORMAL'} = getJoinCardinality($pkComponents, $fkComponents->{$fkKey});
@@ -298,7 +316,7 @@ sub getGraphJoinSQL {
       # Use regex to save off relevant transform components
       if ($transformString =~ /$graphGrokVoltronRegEx/gms) {
         $transform->{transformType} = $1;
-        $transform->{tableName}     = $3;
+        $transform->{tableFullName} = $3;
         $transform->{maxDepth}      = $5;
       }
 
@@ -317,7 +335,7 @@ sub getGraphJoinSQL {
 
       # Fetch the join list
       my @joinList = recursiveGetSuccessors(
-                               {fullGraph => $g, v => $transform->{tableName}, iterationCap => $transform->{maxDepth}});
+                           {fullGraph => $g, v => $transform->{tableFullName}, iterationCap => $transform->{maxDepth}});
 
       # Dedupe join list
       my @joinListUniq = getUniqArray(@joinList);
@@ -327,8 +345,6 @@ sub getGraphJoinSQL {
       my %getSQLForJoinPathsParms = %{$getGraphJoinSQLParams};
       $getSQLForJoinPathsParms{transform} = $transform;
       $getSQLForJoinPathsParms{paths}     = \@joinListUniq;
-
-      # if ($verbose) { $logger->info("$subName \%getSQLForJoinPathsParms" . Dumper(%getSQLForJoinPathsParms)) }
 
       $outputSQL .= getSQLForJoinPaths(\%getSQLForJoinPathsParms);
     } ## end for my $typeString (@types)
@@ -454,10 +470,10 @@ sub getSQLForJoinPaths {
 
     my $join = getJoinFromComponents(
                                      {
-                                      fromTable    => $joinPair[0],
-                                      toTable      => $joinPair[1],
-                                      pkComponents => $getSQLForJoinPathsParms->{pkComponents},
-                                      fkComponents => $getSQLForJoinPathsParms->{fkComponents}
+                                      fromTableFullName => $joinPair[0],
+                                      toTableFullName   => $joinPair[1],
+                                      pkComponents      => $getSQLForJoinPathsParms->{pkComponents},
+                                      fkComponents      => $getSQLForJoinPathsParms->{fkComponents}
                                      }
     );
 
@@ -466,10 +482,6 @@ sub getSQLForJoinPaths {
     # set overrideTypes for this join
     my $typeString = "$getJoinSQLParms{transform}->{app}:$join->{direction}";
     $getJoinSQLParms{overrideTypes} = [$typeString];
-
-    # if ($verbose) {
-    #   $logger->info("$subName \$getJoinSQLParms{overrideTypes}" . Dumper($getJoinSQLParms{overrideTypes}));
-    # }
 
     my $joinSQL = getJoinSQL($join->{join}->{fkKey}, \%getJoinSQLParms);
 
@@ -495,8 +507,11 @@ sub getGraph {
     return;
   }
 
-  my $g  = Graph->new(directed => 1);          # A directed graph.
-  my $fk = $getGraphParams->{fkComponents};    # Alias fkComponents for ease of use
+  my $g = Graph->new(directed => 1);    # A directed graph.
+
+  # Alias values for ease of use
+  my $fk                 = $getGraphParams->{fkComponents};
+  my $allowUnknownSchema = $getGraphParams->{allowUnknownSchema};
 
   if (!defined $fk) {
     $logger->error("$subName was asked to generate a graph but wasn't given a hashref containing valid fkComponents!");
@@ -505,21 +520,27 @@ sub getGraph {
 
   # Loop over every fk, add vertexes and edges to our graph
   while (my ($key, $value) = each %{$fk}) {
-    if (!defined($value->{fromSchema})) { next; }
+
+    # Alias values for ease of use
+    my $fromSchema = $value->{fromSchema};
+    my $toSchema   = $value->{toSchema};
+
+    # Skip missing, partial or unknown schemas unless we were asked to include them
+    if (!$allowUnknownSchema && (!$fromSchema || !$toSchema)) { next; }
 
     # Set edge info and weight based on NORMAL direction
     my $edgeWeightNormal = $value->{cardinalityNORMAL} eq 'ONE' ? 1 : 10;    # Weight paths to prefer 1-1 joins
     my %tempAttr = %{$value};    # make a shallow copy of this hash ref so we don't mutate it
     $tempAttr{weight}    = $edgeWeightNormal;    # Assign a weight
     $tempAttr{direction} = 'NORMAL';             # Assign a 'direction'
-    $g->set_edge_attributes($value->{toTable}, $value->{fromTable}, \%tempAttr);
+    $g->set_edge_attributes($value->{toTableFullName}, $value->{fromTableFullName}, \%tempAttr);
 
     # Set edge info and weight based on REVERSED direction
     my $edgeWeightReversed = $value->{cardinalityREVERSED} eq 'ONE' ? 1 : 10;    # Weight paths to prefer 1-1 joins
     my %tempAttrReversed = %{$value};    # make a shallow copy of this hash ref so we don't mutate it
     $tempAttrReversed{weight}    = $edgeWeightReversed;    # Assign a weight
     $tempAttrReversed{direction} = 'REVERSED';             # Assign a 'direction'
-    $g->set_edge_attributes($value->{fromTable}, $value->{toTable}, \%tempAttrReversed);
+    $g->set_edge_attributes($value->{fromTableFullName}, $value->{toTableFullName}, \%tempAttrReversed);
   } ## end while (my ($key, $value) ...)
 
   return $g;
@@ -1029,31 +1050,36 @@ sub getJoinFromComponents {
   my $direction;
 
   # Alias our params for easier use
-  my $fromTable    = $getJoinFromComponentsParams->{fromTable};
-  my $toTable      = $getJoinFromComponentsParams->{toTable};
-  my $pkComponents = $getJoinFromComponentsParams->{pkComponents};
-  my $fkComponents = $getJoinFromComponentsParams->{fkComponents};
+  my $fromTableFullName = $getJoinFromComponentsParams->{fromTableFullName};
+  my $toTableFullName   = $getJoinFromComponentsParams->{toTableFullName};
+  my $pkComponents      = $getJoinFromComponentsParams->{pkComponents};
+  my $fkComponents      = $getJoinFromComponentsParams->{fkComponents};
 
   # Search for our requested join (NORMAL and REVERSE style)
   for my $key (sort keys %{$fkComponents}) {
 
     # Prefer 'NORMAL' style joins if we can find them
-    if ($fkComponents->{$key}->{fromTable} eq $fromTable and $fkComponents->{$key}->{toTable} eq $toTable) {
+    if (    $fkComponents->{$key}->{fromTableFullName} eq $fromTableFullName
+        and $fkComponents->{$key}->{toTableFullName} eq $toTableFullName)
+    {
       $join      = $fkComponents->{$key};
       $direction = 'NORMAL';
       last;
-    }
+    } ## end if ($fkComponents->{$key...})
 
     # Otherwise, we'll take a 'REVERSED' join if we have to
-    elsif ($fkComponents->{$key}->{toTable} eq $fromTable and $fkComponents->{$key}->{fromTable} eq $toTable) {
+    elsif (    $fkComponents->{$key}->{toTableFullName} eq $fromTableFullName
+           and $fkComponents->{$key}->{fromTableFullName} eq $toTableFullName)
+    {
       $join      = $fkComponents->{$key};
       $direction = 'REVERSED';
       last;
-    }
+    } ## end elsif ($fkComponents->{$key...})
   } ## end for my $key (sort keys ...)
 
   if (!defined($direction)) {
-    $logger->warn("$subName could not find a join for fromTable:$fromTable toTable:$toTable");
+    $logger->warn(
+            "$subName could not find a join for fromTableFullName:$fromTableFullName toTableFullName:$toTableFullName");
   }
 
   return {join => $join, direction => $direction};
