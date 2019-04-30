@@ -284,6 +284,7 @@ sub getGraphJoinSQL {
   }
 
   if (@types) {
+    $logger->info("$subName join SQL generation for $typeString starting.");
 
     # Generate a graph
     my $g = getGraph($getGraphJoinSQLParams);
