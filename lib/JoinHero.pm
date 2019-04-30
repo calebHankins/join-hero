@@ -284,14 +284,13 @@ sub getGraphJoinSQL {
   }
 
   if (@types) {
-    $logger->info("$subName join SQL generation for $typeString starting.");
 
     # Generate a graph
     my $g = getGraph($getGraphJoinSQLParams);
 
     # Loop over graph types and collect join SQL
     for my $typeString (@types) {
-      if ($verbose) { $logger->info("$subName processing: $typeString"); }
+      $logger->info("$subName join SQL generation for $typeString starting.");
 
       my $transform = {};
       $transform->{typeString} = $typeString;
