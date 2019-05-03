@@ -4,23 +4,23 @@ use ExtUtils::MakeMaker;
 WriteMakefile
 (
   'INSTALLDIRS' => 'site',
-  'PREREQ_PM' => {
-                   'English' => '0',
-                   'Data::Dumper' => '0',
-                   'Pod::Usage' => '0',
-                   'Getopt::Long' => '0',
-                   'Graph' => '0',
-                   'IO::Handle' => '0',
-                   'Cwd' => '0',
-                   'File::Path' => '0',
-                   'File::Glob' => '0',
-                   'Log::Log4perl' => '0'
-                 },
   'EXE_FILES' => [
                    'script/join-hero'
                  ],
   'VERSION_FROM' => 'lib/JoinHero.pm',
+  'PL_FILES' => {},
   'NAME' => 'JoinHero',
-  'PL_FILES' => {}
+  'PREREQ_PM' => {
+                   'Log::Log4perl' => '0',
+                   'Pod::Usage' => '0',
+                   'File::Path' => '0',
+                   'IO::Handle' => '0',
+                   'English' => '0',
+                   'Cwd' => '0',
+                   'File::Glob' => '0',
+                   'Data::Dumper' => '0',
+                   'Getopt::Long' => '0',
+                   'Graph' => '0'
+                 }
 )
 ;

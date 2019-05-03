@@ -29,7 +29,7 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smar
 
 ##--------------------------------------------------------------------------
 # Version info
-our $VERSION = '0.2.3';
+our $VERSION = '0.2.4';
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -334,17 +334,14 @@ sub getGraphJoinSQL {
       if ($verbose) { $logger->info("$subName \$transform: " . Dumper($transform)); }
 
       # Fetch the join list
-      my @joinList = recursiveGetSuccessors(
-                           {fullGraph => $g, v => $transform->{tableFullName}, iterationCap => $transform->{maxDepth}});
 
-      # Dedupe join list
-      my @joinListUniq = getUniqArray(@joinList);
+      my @joinList = recursiveGetSuccessors({fullGraph => $g, transform => $transform});
 
       # Get SQL for the joins
       # Shallow copy to avoid mutation
       my %getSQLForJoinPathsParms = %{$getGraphJoinSQLParams};
       $getSQLForJoinPathsParms{transform} = $transform;
-      $getSQLForJoinPathsParms{paths}     = \@joinListUniq;
+      $getSQLForJoinPathsParms{paths}     = \@joinList;
 
       $outputSQL .= getSQLForJoinPaths(\%getSQLForJoinPathsParms);
 
@@ -371,20 +368,38 @@ sub recursiveGetSuccessors {
   my $subName = (caller(0))[3];
 
   # Alias parms for ease of use
+  my $transform        = $recursiveGetSuccessorsParms->{transform};
   my $fullGraph        = $recursiveGetSuccessorsParms->{fullGraph};
   my $v                = $recursiveGetSuccessorsParms->{v};
   my $parents          = $recursiveGetSuccessorsParms->{parents};
   my $currentIteration = $recursiveGetSuccessorsParms->{currentIteration};
   my $iterationCap     = $recursiveGetSuccessorsParms->{iterationCap};
 
+  # If we didn't get an initial starting table, start at the transform's full table name
+  if (!$v) {
+    if ($transform->{tableFullName}) {
+      $v = $transform->{tableFullName};
+    }
+    else {
+      $logger->croak("$subName could not derive a starting table! recursiveGetSuccessorsParms:"
+                     . Dumper($recursiveGetSuccessorsParms));
+    }
+  } ## end if (!$v)
+
   $parents //= [$v];    # The whole chain that brung us
   my @parents = @$parents;
 
   @parents = getUniqArray(@parents);
+
+  # Derive iteration information
   $currentIteration //= 1;    # Assume we're the first unless told otherwise
   if (!$currentIteration > 0) { $currentIteration = 1; }
-  $iterationCap //= 5;        # Don't recurse further than this by default
-  if (!$iterationCap > 0) { $iterationCap = 5; }
+  if (!$iterationCap) {
+    $iterationCap = $transform->{maxDepth};
+  }
+  if (!$iterationCap > 0) {
+    $iterationCap = 5;
+  }                           # Final default iteration cap if we weren't supplied one that made sense
 
   if ($verbose) {
     $logger->info(
@@ -408,7 +423,7 @@ sub recursiveGetSuccessors {
   # Add the valid successors for $v
   for my $successor (@successors) {
     if ($successor ne $v && !($successor ~~ @parents)) {    # Don't loop back
-      push(@joinList, [$v, $successor]);
+      push(@joinList, {join => [$v, $successor], depth => $currentIteration, transform => $transform});
       push(@cleansedSuccessors, $successor);
     }
 
@@ -444,7 +459,8 @@ sub recursiveGetSuccessors {
                                    v                => $cleansedSuccessor,
                                    parents          => \@kidsParents,
                                    currentIteration => $currentIteration + 1,
-                                   iterationCap     => $iterationCap
+                                   iterationCap     => $iterationCap,
+                                   transform        => $transform,
                                   }
            )
       );
@@ -458,7 +474,7 @@ sub recursiveGetSuccessors {
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
-# Given a 2d array of join paths, return a SQL string of join metadata
+# Given a 2d array of join paths nestled firmly in the paths hash ref, return a SQL string of join metadata
 sub getSQLForJoinPaths {
   my ($getSQLForJoinPathsParms) = @_;
   my $subName                   = (caller(0))[3];
@@ -468,7 +484,8 @@ sub getSQLForJoinPaths {
   my $paths = $getSQLForJoinPathsParms->{paths};
 
   for my $path (@{${paths}}) {
-    my @joinPair = @{$path};
+
+    my @joinPair = @{$path->{join}};
 
     my $join = getJoinFromComponents(
                                      {
@@ -484,6 +501,10 @@ sub getSQLForJoinPaths {
     # set overrideTypes for this join
     my $typeString = "$getJoinSQLParms{transform}->{app}:$join->{direction}";
     $getJoinSQLParms{overrideTypes} = [$typeString];
+    my $additionalNoteSuffix = " via transform ";
+    $additionalNoteSuffix .= $path->{transform}->{typeString};
+    $additionalNoteSuffix .= " at a depth of $path->{depth}";
+    $getJoinSQLParms{additionalNoteSuffix} = $additionalNoteSuffix;
 
     my $joinSQL = getJoinSQL($join->{join}->{fkKey}, \%getJoinSQLParms);
 
@@ -675,6 +696,7 @@ sub getJoinSQL {
   my $martCardinalityTableName = $getJoinSQLParams->{martCardinalityTableName};
   my $coreFlg                  = $getJoinSQLParams->{coreFlg};
   my $allowUnknownSchema       = $getJoinSQLParams->{allowUnknownSchema};
+  my $additionalNoteSuffix     = $getJoinSQLParams->{additionalNoteSuffix};
   my @types;
   my @supportedMarts;
 
@@ -696,6 +718,7 @@ sub getJoinSQL {
   $martTableJoinTableName   //= 'MART_TABLE_JOIN';
   $martCardinalityTableName //= 'MART_TABLE_JOIN_CARDINALITY';
   $coreFlg                  //= 'Y';
+  $additionalNoteSuffix     //= '';
 
   if ($verbose) { $logger->info("$subName Processing:$fkComponents->{$fkKey}->{fkKey} for types @types...\n"); }
   for my $typeString (@types) {
@@ -798,7 +821,7 @@ sub getJoinSQL {
           '$toField' as TO_FIELD,
           $fieldJoinOrd as FIELD_JOIN_ORD,
           '$type' as TYPE,
-          'AUTO-GENERATED BY JoinHero Version: $VERSION using $fkComponents->{$fkKey}->{fkName}$directionNote' as NOTES,
+          'AUTO-GENERATED BY JoinHero Version: $VERSION using $fkComponents->{$fkKey}->{fkName}$directionNote$additionalNoteSuffix' as NOTES,
           '$coreFlg' as CORE_FLG
         FROM DUAL};
 
@@ -902,7 +925,7 @@ sub getJoinSQL {
           '$toTable' as TO_TABLE,
           '$cardinality' as CARDINALITY,
           '$type' as TYPE,
-          'AUTO-GENERATED BY JoinHero Version: $VERSION using $fkComponents->{$fkKey}->{fkName}$directionNote' as NOTES,
+          'AUTO-GENERATED BY JoinHero Version: $VERSION using $fkComponents->{$fkKey}->{fkName}$directionNote$additionalNoteSuffix' as NOTES,
           '$coreFlg' as CORE_FLG
         FROM DUAL
       ) B
