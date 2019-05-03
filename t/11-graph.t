@@ -279,6 +279,7 @@ sub getGraphJoinSQL {
 
   my $getGraphJoinSQLParamsSnowflake    = {fkComponents => $fk_01, graphTypes => ['JJJ:SNOWFLAKE->JJJ.STORES']};
   my $outputGraphJoinSQLSnowflakeStores = JoinHero::getGraphJoinSQL($getGraphJoinSQLParamsSnowflake);
+  print $outputGraphJoinSQLSnowflakeStores;
   ok(whitespaceInsensitiveCompare($expectedGraphJoinSQLSnowflakeStores, $outputGraphJoinSQLSnowflakeStores),
      "$subName outputGraphJoinSQLSnowflakeStores output matches expected value");
 

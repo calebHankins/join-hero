@@ -334,14 +334,16 @@ sub getGraphJoinSQL {
       if ($verbose) { $logger->info("$subName \$transform: " . Dumper($transform)); }
 
       # Fetch the join list
-
       my @joinList = recursiveGetSuccessors({fullGraph => $g, transform => $transform});
+
+      # Dedupe the join list, pick the 'best' join to survive
+      my @joinListUniq = bestPickJoinList(@joinList);
 
       # Get SQL for the joins
       # Shallow copy to avoid mutation
       my %getSQLForJoinPathsParms = %{$getGraphJoinSQLParams};
       $getSQLForJoinPathsParms{transform} = $transform;
-      $getSQLForJoinPathsParms{paths}     = \@joinList;
+      $getSQLForJoinPathsParms{paths}     = \@joinListUniq;
 
       $outputSQL .= getSQLForJoinPaths(\%getSQLForJoinPathsParms);
 
@@ -1207,6 +1209,17 @@ sub getUniqArray {
 
   return @unique;
 } ## end sub getUniqArray
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
+## Dedupe a given join list (array of hash refs), return only the best joins
+sub bestPickJoinList {
+  my (@joinList) = @_;
+  my %seen = ();
+  my @unique = grep { !$seen{Dumper($_->{join})}++ } @joinList;    # Let's use first thought best thought de-duping
+
+  return @unique;
+} ## end sub bestPickJoinList
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
