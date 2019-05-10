@@ -15,7 +15,7 @@ name: JoinHero
 provides:
   JoinHero:
     file: lib/JoinHero.pm
-    version: v0.2.4
+    version: v0.2.5
   JoinHero::Logger:
     file: lib/JoinHero/Logger.pm
 requires:
@@ -32,5 +32,5 @@ requires:
   perl: v5.10.1
 resources:
   license: http://apache.org/licenses/LICENSE-2.0
-version: v0.2.4
+version: v0.2.5
 x_serialization_backend: 'CPAN::Meta::YAML version 0.018'

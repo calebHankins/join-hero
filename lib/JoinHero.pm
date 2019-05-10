@@ -29,7 +29,7 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smar
 
 ##--------------------------------------------------------------------------
 # Version info
-our $VERSION = '0.2.4';
+our $VERSION = '0.2.5';
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -1216,7 +1216,8 @@ sub getUniqArray {
 sub bestPickJoinList {
   my (@joinList) = @_;
   my %seen = ();
-  my @unique = grep { !$seen{Dumper($_->{join})}++ } @joinList;    # Let's use first thought best thought de-duping
+  my @rankedJoinList = sort { $a->{depth} <=> $b->{depth} } @joinList;           # Order list by depth
+  my @unique         = grep { !$seen{Dumper($_->{join})}++ } @rankedJoinList;    # De-dupe based on the join list
 
   return @unique;
 } ## end sub bestPickJoinList
