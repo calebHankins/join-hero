@@ -90,7 +90,7 @@ my $inputFileContents = JoinHero::openAndLoadFile($inputFilepath);
 # Parse DDL Source file into usable components
 my ($pk, $fk) = JoinHero::getKeyComponents($inputFileContents, \@supportedMarts, $inferEmptySchema);
 
-$JoinHero::logger->info("Input file analyzed, procedding to join SQL generation.");
+$JoinHero::logger->info("Input file analyzed, proceeding to join SQL generation.");
 
 # Use our component list to construct some oracle merge statements
 my $outputFileContents = JoinHero::getOutputSQL(
@@ -232,20 +232,24 @@ join-hero
   'o|out|outputFilepath=s'       Output filepath for metadata sql [required]
   'types=s'                      Comma delimited list in the form app[:transform][,app2[:transform2]].
 
+                                  Will generate one set of metadata per app. Defaults to 'SAMPLE' and 'NORMAL' / no transform.
+
                                   If transform is 'REVERSED', 'from' and 'to' join direction is flipped.
 
+                                  The SNOWFLAKE and STAR transforms will build metadata around a targeted center 'FACT_TABLE'.
+                                    If the FACT_TABLE has a defined schema, the schema should be included in the transform
+                                    e.g. --types 'JJJ_Model_Reader:STAR->JJJ.STORES'
+
                                   If transform is 'SNOWFLAKE->FACT_TABLE[->MAX_PATH_LENGTH]' metadata for a snowflake schema
-                                  centered around the table 'FACT_TABLE' is generated. Optional MAX_PATH_LENGTH integer which
-                                  will stop adding joins on fact table children after reaching a path length cap.
-                                  Default MAX_PATH_LENGTH is 5.
-                                  See https://en.wikipedia.org/wiki/Snowflake_schema
+                                    centered around the table 'FACT_TABLE' is generated. Optional MAX_PATH_LENGTH integer which
+                                    will stop adding joins on fact table children after reaching a path length cap.
+                                    Default MAX_PATH_LENGTH is 5.
+                                    See https://en.wikipedia.org/wiki/Snowflake_schema
 
                                   If transform is 'STAR->FACT_TABLE' metadata for a star schema centered around
-                                  the table 'FACT_TABLE' is generated. A star is a special case of a snowflake
-                                  with a path length set to 1.
-                                  See https://en.wikipedia.org/wiki/Star_schema
-
-                                  Will generate one set of metadata per app. Defaults to 'SAMPLE' and 'NORMAL' / no transform.
+                                    the table 'FACT_TABLE' is generated. A star is a special case of a snowflake
+                                    with a path length set to 1.
+                                    See https://en.wikipedia.org/wiki/Star_schema
 
   'marts|martPrefixes=s'         Comma delimited list of prefixes for schema derivation [optional]
   'u|updateExisting'             Update existing metadata [optional]
