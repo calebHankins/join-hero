@@ -29,7 +29,7 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smar
 
 ##--------------------------------------------------------------------------
 # Version info
-our $VERSION = '0.2.5';
+our $VERSION = '0.2.6';
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -318,6 +318,10 @@ sub getGraphJoinSQL {
         $transform->{transformType} = $1;
         $transform->{tableFullName} = $3;
         $transform->{maxDepth}      = $5;
+      }
+      else {
+        $logger->error("$subName could not understand typeString: [$typeString]! Skipping...");
+        next;
       }
 
       # Stars are a special case and have a cap of 1
