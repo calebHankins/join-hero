@@ -302,9 +302,9 @@ sub getGraphJoinSQL {
 
       # Split apart our transform into its components
       my $transformTypeRegEx         = '(STAR|SNOWFLAKE)';
-      my $transformToTableDelimRegEx = '(->)';
-      my $tableNameRegEx             = '([".a-zA-Z0-9_\$\@]+)';
-      my $tableToMaxDepthDelimRegEx  = '(->)?';
+      my $transformToTableDelimRegEx = '(->|\@)';
+      my $tableNameRegEx             = '([".a-zA-Z0-9_\$]+)';
+      my $tableToMaxDepthDelimRegEx  = '(->|\@)?';
       my $maxDepthRegEx              = '([0-9]*)';
       my $graphGrokVoltronRegEx      = q{};
       $graphGrokVoltronRegEx .= $transformTypeRegEx;

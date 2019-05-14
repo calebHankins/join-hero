@@ -238,7 +238,9 @@ join-hero
 
                                   The SNOWFLAKE and STAR transforms will build metadata around a targeted center 'FACT_TABLE'.
                                     If the FACT_TABLE has a defined schema, the schema should be included in the transform
-                                    e.g. --types 'JJJ_Model_Reader:STAR->JJJ.STORES'
+                                    e.g. --types 'JJJ_Model_Reader:STAR->JJJ.STORES'. The snowflake/star transform arguments
+                                    can be specified using either the arrow '->' or the at sign '@'.
+                                    E.g. DEMO:STAR->JJJ.STORES and DEMO:STAR@JJJ.STORES are synonymous.
 
                                   If transform is 'SNOWFLAKE->FACT_TABLE[->MAX_PATH_LENGTH]' metadata for a snowflake schema
                                     centered around the table 'FACT_TABLE' is generated. Optional MAX_PATH_LENGTH integer which
