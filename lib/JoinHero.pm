@@ -320,7 +320,7 @@ sub getGraphJoinSQL {
         $transform->{maxDepth}      = $5;
       }
       else {
-        $logger->error("$subName could not understand typeString: [$typeString]! Skipping...");
+        $logger->carp("$subName could not understand typeString: [$typeString]! Skipping...");
         next;
       }
 
