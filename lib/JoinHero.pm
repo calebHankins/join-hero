@@ -24,11 +24,12 @@ use strict;
 use File::Glob ':glob';    # Perl extension for BSD glob routine
 use Data::Dumper;
 use File::Path qw(make_path);
+use English qw(-no_match_vars);
 no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smartmatch warnings
 
 ##--------------------------------------------------------------------------
 # Version info
-our $VERSION = '0.1.9';
+our $VERSION = '0.2.6';
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -45,7 +46,7 @@ our $verbose = 0;    # Default to not verbose
 ##---------------------------------------------------------------------------
 # Capture and save valuable components in the supplied DDL file
 sub getKeyComponents {
-  my ($rawDDL, $supportedMartsRef) = @_;
+  my ($rawDDL, $supportedMartsRef, $inferEmptySchema) = @_;
   $supportedMartsRef //= [];    # If we didn't get this argument, default to an empty array ref
   my @supportedMarts = @$supportedMartsRef;
   my $subName        = (caller(0))[3];
@@ -121,7 +122,7 @@ sub getKeyComponents {
     } ## end if ($pk =~ /$pkComponentsRegEx/gms)
   } ## end for my $pk (@keyDDL)
 
-  if ($verbose) { $logger->info("$subName Primary and unique key components:\n" . Dumper($pkComponents)); }
+  # if ($verbose) { $logger->info("$subName Primary and unique key components:\n" . Dumper($pkComponents)); }
 
   # Munge our FKs into components that we can use
   my $fkComponents = {};    # Hash ref to hold our broken out component parts
@@ -167,13 +168,31 @@ sub getKeyComponents {
         my $fromSchema = getSchemaName($fromTable, \@supportedMarts);
         my $toSchema   = getSchemaName($toTable,   \@supportedMarts);
 
-        # If we got one schema but not the other, set the empty one using the populated one
-        if ($fromSchema && !$toSchema)   { $toSchema   = $fromSchema; }
-        if ($toSchema   && !$fromSchema) { $fromSchema = $toSchema; }
+        # If asked, and we got one schema in a pair but not the other, set the empty one using the populated one
+        if ($inferEmptySchema) {
+          if ($fromSchema && !$toSchema)   { $toSchema   = $fromSchema; }
+          if ($toSchema   && !$fromSchema) { $fromSchema = $toSchema; }
+        }
 
         # Save munged schema components
         $fkComponents->{$fkKey}->{'fromSchema'} = $fromSchema;
         $fkComponents->{$fkKey}->{'toSchema'}   = $toSchema;
+
+        # Assemble the fully qualified to and from table names (with schema if we have them)
+        my $toTableFullName;
+        if ($toSchema) {
+          $toTableFullName = "$fkComponents->{$fkKey}->{'toSchema'}.$fkComponents->{$fkKey}->{'toTable'}";
+        }
+        else { $toTableFullName = $fkComponents->{$fkKey}->{'toTable'} }
+        my $fromTableFullName;
+        if ($fromSchema) {
+          $fromTableFullName = "$fkComponents->{$fkKey}->{'fromSchema'}.$fkComponents->{$fkKey}->{'fromTable'}";
+        }
+        else { $fromTableFullName = $fkComponents->{$fkKey}->{'fromTable'} }
+
+        # Save munged full table names
+        $fkComponents->{$fkKey}->{'toTableFullName'}   = $toTableFullName;
+        $fkComponents->{$fkKey}->{'fromTableFullName'} = $fromTableFullName;
 
         # Calculate and store cardinality
         $fkComponents->{$fkKey}->{'cardinalityNORMAL'} = getJoinCardinality($pkComponents, $fkComponents->{$fkKey});
@@ -183,7 +202,7 @@ sub getKeyComponents {
     } ## end if ($fk =~ /$fkComponentsRegEx/gms)
   } ## end for my $fk (@keyDDL)
 
-  if ($verbose) { $logger->info("$subName Foreign keys components:\n" . Dumper($fkComponents)); }
+  # if ($verbose) { $logger->info("$subName Foreign keys components:\n" . Dumper($fkComponents)); }
 
   return ($pkComponents, $fkComponents);
 } ## end sub getKeyComponents
@@ -195,40 +214,407 @@ sub getOutputSQL {
   my ($getOutputSQLParams) = @_;
   my $subName = (caller(0))[3];
   my $outputSQL;
-  my $uncommittedTransactions = 0;
-
-  # Alias our params for easier use
-  my $pkComponents    = $getOutputSQLParams->{pkComponents};
-  my $fkComponents    = $getOutputSQLParams->{fkComponents};
-  my $commitThreshold = $getOutputSQLParams->{commitThreshold};
-  my $createTables    = $getOutputSQLParams->{createTables};
-  $commitThreshold //= 1000;    # Default if not supplied
 
   # Generate CREATE TABLE statements
-  if ($createTables) {
+  if ($getOutputSQLParams->{createTables}) {
     $outputSQL .= getJoinTableSQL($getOutputSQLParams);
     $outputSQL .= getCardinalityTableSQL($getOutputSQLParams);
   }
 
-  # Step through each FK and generate SQL for each. Append to working SQL variable each iteration
-  for my $key (sort keys %{$fkComponents}) {
-    my $joinSQL = getJoinSQL($key, $getOutputSQLParams);
-    if ($joinSQL) {
-      $outputSQL .= $joinSQL;
-      $uncommittedTransactions += () = $joinSQL =~ /;/g;    # Count semicolons to determine transactions added
-      if ($verbose) { $logger->info("$subName uncommittedTransactions: $uncommittedTransactions\n"); }
-      if ($uncommittedTransactions > $commitThreshold) {    # If we've reached the threshold, commit and reset count
-        $logger->info("$subName Reached transaction threshold, inserting commit\n");
-        $outputSQL .= "\ncommit;\n";
-        $uncommittedTransactions = 0;
-      }
-    } ## end if ($joinSQL)
-  } ## end for my $key (sort keys ...)
+  # Check list of transforms, branch depending on transform needs
+  my @supportedTypes;
+  my @simpleTypes;
+  $getOutputSQLParams->{simpleTypes} = \@simpleTypes;
+  my @graphTypes;
+  $getOutputSQLParams->{graphTypes} = \@graphTypes;
+  if (defined $getOutputSQLParams->{supportedTypes}) { @supportedTypes = @{$getOutputSQLParams->{supportedTypes}}; }
+  if (!@supportedTypes) { @supportedTypes = ('SAMPLE'); }
+
+  # A type is optionally a colon delimited string in the format app[:transform]
+  for my $typeString (@supportedTypes) {
+    my ($type, $transform) = split(':', $typeString);
+    $transform //= 'NORMAL';    # Default transform to NORMAL if not specified
+    $transform = uc($transform);
+
+    # For SNOWFLAKE and STAR transforms, switch to graph based generation. Else run through simple path
+    my $graphRegEx = q{star|snowflake};
+    if   ($transform =~ /$graphRegEx/gmi) { push(@graphTypes,  $typeString); }
+    else                                  { push(@simpleTypes, $typeString); }
+  } ## end for my $typeString (@supportedTypes)
+
+  # Print type breakdown for debugging
+  if ($verbose) {
+    $logger->info(
+            "$subName \@supportedTypes: [@supportedTypes], \@simpleTypes: [@simpleTypes], \@graphTypes: [@graphTypes]");
+  }
+
+  # Generate SQL for graph based types
+  $outputSQL .= getGraphJoinSQL($getOutputSQLParams);    # Append simple join SQL
+
+  # Generate SQL for simple types
+  $outputSQL .= getSimpleJoinSQL($getOutputSQLParams);    # Append simple join SQL
 
   $outputSQL .= "\ncommit;\n";
 
   return $outputSQL;
 } ## end sub getOutputSQL
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
+# Generate and return join SQL for all relevant graph based types
+sub getGraphJoinSQL {
+  my ($getGraphJoinSQLParams) = @_;
+  my $subName                 = (caller(0))[3];
+  my $outputSQL               = '';
+
+  my $commitThreshold = $getGraphJoinSQLParams->{commitThreshold};
+  $commitThreshold //= 1000;    # Default if not supplied
+  my $uncommittedTransactions = $getGraphJoinSQLParams->{uncommittedTransactions};
+  $uncommittedTransactions //= 0;    # Default if not supplied
+
+  # Alias parms for ease of use
+  my @types = @{$getGraphJoinSQLParams->{graphTypes}};
+
+  # If we don't have the modules we need, skip these types
+  eval { require Graph; };
+  if ($EVAL_ERROR) {
+    my $msg = "Graph module required for the following types, skipping: [@types]";
+    $logger->warn($msg);
+    return $outputSQL;
+  }
+
+  if (@types) {
+
+    # Generate a graph
+    my $g = getGraph($getGraphJoinSQLParams);
+
+    # Loop over graph types and collect join SQL
+    for my $typeString (@types) {
+      $logger->info("$subName join SQL generation for $typeString starting.");
+
+      my $transform = {};
+      $transform->{typeString} = $typeString;
+
+      # A graph typeString is a colon delimited string in the format app[:transform]
+      my ($app, $transformString) = split(':', $typeString);
+      $transform->{app} = $app;
+      $transformString = uc($transformString);
+
+      # Split apart our transform into its components
+      my $transformTypeRegEx         = '(STAR|SNOWFLAKE)';
+      my $transformToTableDelimRegEx = '(->|\@)';
+      my $tableNameRegEx             = '([".a-zA-Z0-9_\$]+)';
+      my $tableToMaxDepthDelimRegEx  = '(->|\@)?';
+      my $maxDepthRegEx              = '([0-9]*)';
+      my $graphGrokVoltronRegEx      = q{};
+      $graphGrokVoltronRegEx .= $transformTypeRegEx;
+      $graphGrokVoltronRegEx .= $transformToTableDelimRegEx;
+      $graphGrokVoltronRegEx .= $tableNameRegEx;
+      $graphGrokVoltronRegEx .= $tableToMaxDepthDelimRegEx;
+      $graphGrokVoltronRegEx .= $maxDepthRegEx;
+
+      # Use regex to save off relevant transform components
+      if ($transformString =~ /$graphGrokVoltronRegEx/gms) {
+        $transform->{transformType} = $1;
+        $transform->{tableFullName} = $3;
+        $transform->{maxDepth}      = $5;
+      }
+      else {
+        $logger->carp("$subName could not understand typeString: [$typeString]! Skipping...");
+        next;
+      }
+
+      # Stars are a special case and have a cap of 1
+      if ($transform->{transformType} eq 'STAR') { $transform->{maxDepth} = 1; }
+
+      # Set default snowflake maxDepth if we didn't get an override
+      if ($transform->{transformType} eq 'SNOWFLAKE') {
+        if (!$transform->{maxDepth} > 0) {
+          $transform->{maxDepth} = 5;
+        }
+      }
+
+      # Print debug info
+      if ($verbose) { $logger->info("$subName \$transform: " . Dumper($transform)); }
+
+      # Fetch the join list
+      my @joinList = recursiveGetSuccessors({fullGraph => $g, transform => $transform});
+
+      # Dedupe the join list, pick the 'best' join to survive
+      my @joinListUniq = bestPickJoinList(@joinList);
+
+      # Get SQL for the joins
+      # Shallow copy to avoid mutation
+      my %getSQLForJoinPathsParms = %{$getGraphJoinSQLParams};
+      $getSQLForJoinPathsParms{transform} = $transform;
+      $getSQLForJoinPathsParms{paths}     = \@joinListUniq;
+
+      $outputSQL .= getSQLForJoinPaths(\%getSQLForJoinPathsParms);
+
+      $logger->info("$subName join SQL generation for $typeString complete.");
+    } ## end for my $typeString (@types)
+
+  } ## end if (@types)
+  else {
+    if ($verbose) {
+      $logger->info("$subName No graphTypes detected, skipping graph based join SQL generation.");
+    }
+  }
+
+  $getGraphJoinSQLParams->{uncommittedTransactions} = $uncommittedTransactions;
+
+  return $outputSQL;
+} ## end sub getGraphJoinSQL
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
+#  Recursively traverse a given graph building pairs of joins from visited edges
+sub recursiveGetSuccessors {
+  my ($recursiveGetSuccessorsParms) = @_;
+  my $subName = (caller(0))[3];
+
+  # Alias parms for ease of use
+  my $transform        = $recursiveGetSuccessorsParms->{transform};
+  my $fullGraph        = $recursiveGetSuccessorsParms->{fullGraph};
+  my $v                = $recursiveGetSuccessorsParms->{v};
+  my $parents          = $recursiveGetSuccessorsParms->{parents};
+  my $currentIteration = $recursiveGetSuccessorsParms->{currentIteration};
+  my $iterationCap     = $recursiveGetSuccessorsParms->{iterationCap};
+
+  # If we didn't get an initial starting table, start at the transform's full table name
+  if (!$v) {
+    if ($transform->{tableFullName}) {
+      $v = $transform->{tableFullName};
+    }
+    else {
+      $logger->croak("$subName could not derive a starting table! recursiveGetSuccessorsParms:"
+                     . Dumper($recursiveGetSuccessorsParms));
+    }
+  } ## end if (!$v)
+
+  $parents //= [$v];    # The whole chain that brung us
+  my @parents = @$parents;
+
+  @parents = getUniqArray(@parents);
+
+  # Derive iteration information
+  $currentIteration //= 1;    # Assume we're the first unless told otherwise
+  if (!$currentIteration > 0) { $currentIteration = 1; }
+  if (!$iterationCap) {
+    $iterationCap = $transform->{maxDepth};
+  }
+  if (!$iterationCap > 0) {
+    $iterationCap = 5;
+  }                           # Final default iteration cap if we weren't supplied one that made sense
+
+  if ($verbose) {
+    $logger->info(
+          "$subName for:$v. \$currentIteration: $currentIteration out of a capped $iterationCap and a parent list of:\n"
+            . Dumper(@parents));
+  }
+  my @cleansedSuccessors = ();
+  my @joinList           = ();
+
+  if ($currentIteration > $iterationCap) {
+
+    if ($verbose) {
+      $logger->info(
+                  "$subName exceeded max iteration cap, bailing out $currentIteration out of a capped $iterationCap\n");
+    }
+    return @joinList;
+  } ## end if ($currentIteration ...)
+
+  my @successors = $fullGraph->successors($v);
+
+  # Add the valid successors for $v
+  for my $successor (@successors) {
+    if ($successor ne $v && !($successor ~~ @parents)) {    # Don't loop back
+      push(@joinList, {join => [$v, $successor], depth => $currentIteration, transform => $transform});
+      push(@cleansedSuccessors, $successor);
+    }
+
+    else {
+      if ($verbose) {
+        $logger->info("$subName $v successor $successor skipped due to not meeting cleansedSuccessor status.\n");
+      }
+    }
+
+  } ## end for my $successor (@successors)
+
+  # Now for each of the successors, need to calculate their successors
+  @cleansedSuccessors = sort @cleansedSuccessors;    # Sort these so it is deterministic
+
+  if ($verbose) {
+    $logger->info("$subName for:$v \@cleansedSuccessors:\n" . Dumper(@cleansedSuccessors));
+    $logger->info("$subName for:$v \@joinList before recursion:\n" . Dumper(@joinList));
+  }
+
+  # Then go down the rabbit hole for $v's kids if we haven't hit the cap yet
+  if ($currentIteration + 1 <= $iterationCap) {
+    for my $cleansedSuccessor (@cleansedSuccessors) {
+      if ($verbose) {
+        $logger->info("$subName down the rabbit hole for $v \$cleansedSuccessor:$cleansedSuccessor\n");
+      }
+      my @kidsParents = @parents;
+      push(@kidsParents, $v);
+      push(
+           @joinList,
+           recursiveGetSuccessors(
+                                  {
+                                   fullGraph        => $fullGraph,
+                                   v                => $cleansedSuccessor,
+                                   parents          => \@kidsParents,
+                                   currentIteration => $currentIteration + 1,
+                                   iterationCap     => $iterationCap,
+                                   transform        => $transform,
+                                  }
+           )
+      );
+    } ## end for my $cleansedSuccessor...
+    if ($verbose) { $logger->info("$subName for:$v \@joinList after recursion:\n" . Dumper(@joinList)) }
+  } ## end if ($currentIteration ...)
+
+  return @joinList;
+
+} ## end sub recursiveGetSuccessors
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
+# Given a 2d array of join paths nestled firmly in the paths hash ref, return a SQL string of join metadata
+sub getSQLForJoinPaths {
+  my ($getSQLForJoinPathsParms) = @_;
+  my $subName                   = (caller(0))[3];
+  my $outputSQL                 = '';
+
+  # Alias our params for easier use
+  my $paths = $getSQLForJoinPathsParms->{paths};
+
+  for my $path (@{${paths}}) {
+
+    my @joinPair = @{$path->{join}};
+
+    my $join = getJoinFromComponents(
+                                     {
+                                      fromTableFullName => $joinPair[0],
+                                      toTableFullName   => $joinPair[1],
+                                      pkComponents      => $getSQLForJoinPathsParms->{pkComponents},
+                                      fkComponents      => $getSQLForJoinPathsParms->{fkComponents}
+                                     }
+    );
+
+    my %getJoinSQLParms = %{$getSQLForJoinPathsParms};
+
+    # set overrideTypes for this join
+    my $typeString = "$getJoinSQLParms{transform}->{app}:$join->{direction}";
+    $getJoinSQLParms{overrideTypes} = [$typeString];
+    my $additionalNoteSuffix = " via transform ";
+    $additionalNoteSuffix .= $path->{transform}->{typeString};
+    $additionalNoteSuffix .= " at a depth of $path->{depth}";
+    $getJoinSQLParms{additionalNoteSuffix} = $additionalNoteSuffix;
+
+    my $joinSQL = getJoinSQL($join->{join}->{fkKey}, \%getJoinSQLParms);
+
+    $outputSQL .= $joinSQL;
+
+  } ## end for my $path (@{${paths...}})
+
+  return $outputSQL;
+} ## end sub getSQLForJoinPaths
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
+# Use fkComponents to produce a weighted and direct graph
+sub getGraph {
+  my ($getGraphParams) = @_;
+  my $subName = (caller(0))[3];
+
+  # If we don't have the modules we need, skip
+  eval { require Graph; };
+  if ($EVAL_ERROR) {
+    my $msg = "Graph module required for graph generation, skipping";
+    $logger->warn($msg);
+    return;
+  }
+
+  my $g = Graph->new(directed => 1);    # A directed graph.
+
+  # Alias values for ease of use
+  my $fk                 = $getGraphParams->{fkComponents};
+  my $allowUnknownSchema = $getGraphParams->{allowUnknownSchema};
+
+  if (!defined $fk) {
+    $logger->error("$subName was asked to generate a graph but wasn't given a hashref containing valid fkComponents!");
+    return $g;
+  }
+
+  # Loop over every fk, add vertexes and edges to our graph
+  while (my ($key, $value) = each %{$fk}) {
+
+    # Alias values for ease of use
+    my $fromSchema = $value->{fromSchema};
+    my $toSchema   = $value->{toSchema};
+
+    # Skip missing, partial or unknown schemas unless we were asked to include them
+    if (!$allowUnknownSchema && (!$fromSchema || !$toSchema)) { next; }
+
+    # Set edge info and weight based on NORMAL direction
+    my $edgeWeightNormal = $value->{cardinalityNORMAL} eq 'ONE' ? 1 : 10;    # Weight paths to prefer 1-1 joins
+    my %tempAttr = %{$value};    # make a shallow copy of this hash ref so we don't mutate it
+    $tempAttr{weight}    = $edgeWeightNormal;    # Assign a weight
+    $tempAttr{direction} = 'NORMAL';             # Assign a 'direction'
+    $g->set_edge_attributes($value->{toTableFullName}, $value->{fromTableFullName}, \%tempAttr);
+
+    # Set edge info and weight based on REVERSED direction
+    my $edgeWeightReversed = $value->{cardinalityREVERSED} eq 'ONE' ? 1 : 10;    # Weight paths to prefer 1-1 joins
+    my %tempAttrReversed = %{$value};    # make a shallow copy of this hash ref so we don't mutate it
+    $tempAttrReversed{weight}    = $edgeWeightReversed;    # Assign a weight
+    $tempAttrReversed{direction} = 'REVERSED';             # Assign a 'direction'
+    $g->set_edge_attributes($value->{fromTableFullName}, $value->{toTableFullName}, \%tempAttrReversed);
+  } ## end while (my ($key, $value) ...)
+
+  return $g;
+} ## end sub getGraph
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
+# Generate and return join SQL for all relevant simple types
+sub getSimpleJoinSQL {
+  my ($getSimpleJoinSQLParams) = @_;
+  my $subName                  = (caller(0))[3];
+  my $outputSQL                = '';
+
+  my $commitThreshold = $getSimpleJoinSQLParams->{commitThreshold};
+  $commitThreshold //= 1000;    # Default if not supplied
+  my $uncommittedTransactions = $getSimpleJoinSQLParams->{uncommittedTransactions};
+  $uncommittedTransactions //= 0;    # Default if not supplied
+
+  if (@{$getSimpleJoinSQLParams->{simpleTypes}}) {
+
+    # Step through each FK and generate SQL for each. Append to working SQL variable each iteration
+    for my $key (sort keys %{$getSimpleJoinSQLParams->{fkComponents}}) {
+      my $joinSQL = getJoinSQL($key, $getSimpleJoinSQLParams);
+      if ($joinSQL) {
+        $outputSQL .= $joinSQL;
+        $uncommittedTransactions += () = $joinSQL =~ /;/g;    # Count semicolons to determine transactions added
+        if ($verbose) { $logger->info("$subName uncommittedTransactions: $uncommittedTransactions\n"); }
+        if ($uncommittedTransactions > $commitThreshold) {    # If we've reached the threshold, commit and reset count
+          $logger->info("$subName Reached transaction threshold, inserting commit\n");
+          $outputSQL .= "\ncommit;\n";
+          $uncommittedTransactions = 0;
+        }
+      } ## end if ($joinSQL)
+    } ## end for my $key (sort keys ...)
+  } ## end if (@{$getSimpleJoinSQLParams...})
+  else {
+    if ($verbose) {
+      $logger->info("$subName No simpleTypes detected, skipping simple join SQL generation.");
+    }
+  }
+
+  $getSimpleJoinSQLParams->{uncommittedTransactions} = $uncommittedTransactions;
+
+  return $outputSQL;
+} ## end sub getSimpleJoinSQL
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -316,12 +702,21 @@ sub getJoinSQL {
   my $martCardinalityTableName = $getJoinSQLParams->{martCardinalityTableName};
   my $coreFlg                  = $getJoinSQLParams->{coreFlg};
   my $allowUnknownSchema       = $getJoinSQLParams->{allowUnknownSchema};
-  my @supportedTypes;
+  my $additionalNoteSuffix     = $getJoinSQLParams->{additionalNoteSuffix};
+  my @types;
   my @supportedMarts;
 
   # Set defaults for things we didn't get but need
-  if (defined $getJoinSQLParams->{supportedTypes}) { @supportedTypes = @{$getJoinSQLParams->{supportedTypes}}; }
-  if (!@supportedTypes)                            { @supportedTypes = ('SAMPLE'); }
+  if (defined $getJoinSQLParams->{overrideTypes}) {
+    if (@{$getJoinSQLParams->{overrideTypes}} > 0) { @types = @{$getJoinSQLParams->{overrideTypes}}; }
+  }
+  elsif (defined $getJoinSQLParams->{simpleTypes}) {
+    if (@{$getJoinSQLParams->{simpleTypes}} > 0) { @types = @{$getJoinSQLParams->{simpleTypes}}; }
+  }
+  elsif (defined $getJoinSQLParams->{supportedTypes}) {
+    if (@{$getJoinSQLParams->{supportedTypes}} > 0) { @types = @{$getJoinSQLParams->{supportedTypes}}; }
+  }
+  if (!@types)                                     { @types          = ('SAMPLE'); }
   if (defined $getJoinSQLParams->{supportedMarts}) { @supportedMarts = @{$getJoinSQLParams->{supportedMarts}}; }
   if (!@supportedMarts)                            { @supportedMarts = ('SAMPLE'); }
   $deleteExisting           //= 0;
@@ -329,14 +724,18 @@ sub getJoinSQL {
   $martTableJoinTableName   //= 'MART_TABLE_JOIN';
   $martCardinalityTableName //= 'MART_TABLE_JOIN_CARDINALITY';
   $coreFlg                  //= 'Y';
+  $additionalNoteSuffix     //= '';
 
-  if ($verbose) { $logger->info("$subName Processing:$fkComponents->{$fkKey}->{fkKey}...\n"); }
-  for my $typeString (@supportedTypes) {
+  if ($verbose) { $logger->info("$subName Processing:$fkComponents->{$fkKey}->{fkKey} for types @types...\n"); }
+  for my $typeString (@types) {
 
     # A typeString is optionally a colon delimited string in the format app[:direction]
     my ($type, $typeDirection) = split(':', $typeString);
     $typeDirection //= 'NORMAL';    # Default typeDirection to normal if not specified
     $typeDirection = uc($typeDirection);
+
+    # Leave early if we have an unsupported typeDirection
+    if ($typeDirection ne 'NORMAL' and $typeDirection ne 'REVERSED') { next; }
 
     if ($verbose) {
       $logger->info(
@@ -365,11 +764,10 @@ sub getJoinSQL {
 
     # Validate schema, set default if empty
     if (!defined($toSchema) || !defined($fromSchema)) {
-      if ($verbose) { $logger->info("$subName Setting default schema\n"); }
       $toSchema   = 'UNKNOWN';
       $fromSchema = 'UNKNOWN';
       if (!$allowUnknownSchema) { return; }    # Leave early unless we allow UNKNOWN schema
-    } ## end if (!defined($toSchema...))
+    }
 
     # Exit early if the schema don't match, no cross mart joins
     if ($toSchema ne $fromSchema) {
@@ -429,7 +827,7 @@ sub getJoinSQL {
           '$toField' as TO_FIELD,
           $fieldJoinOrd as FIELD_JOIN_ORD,
           '$type' as TYPE,
-          'AUTO-GENERATED BY Unregistered JoinHero 2 using $fkComponents->{$fkKey}->{fkName}$directionNote' as NOTES,
+          'AUTO-GENERATED BY JoinHero Version: $VERSION using $fkComponents->{$fkKey}->{fkName}$directionNote$additionalNoteSuffix' as NOTES,
           '$coreFlg' as CORE_FLG
         FROM DUAL};
 
@@ -533,7 +931,7 @@ sub getJoinSQL {
           '$toTable' as TO_TABLE,
           '$cardinality' as CARDINALITY,
           '$type' as TYPE,
-          'AUTO-GENERATED BY Unregistered JoinHero 2 using $fkComponents->{$fkKey}->{fkName}$directionNote' as NOTES,
+          'AUTO-GENERATED BY JoinHero Version: $VERSION using $fkComponents->{$fkKey}->{fkName}$directionNote$additionalNoteSuffix' as NOTES,
           '$coreFlg' as CORE_FLG
         FROM DUAL
       ) B
@@ -568,7 +966,7 @@ sub getJoinSQL {
 
     $outputSQL .= $mergeSQLMartTableJoinCardinality;
 
-  } ## end for my $typeString (@supportedTypes)
+  } ## end for my $typeString (@types)
 
   return $outputSQL;
 } ## end sub getJoinSQL
@@ -683,31 +1081,36 @@ sub getJoinFromComponents {
   my $direction;
 
   # Alias our params for easier use
-  my $fromTable    = $getJoinFromComponentsParams->{fromTable};
-  my $toTable      = $getJoinFromComponentsParams->{toTable};
-  my $pkComponents = $getJoinFromComponentsParams->{pkComponents};
-  my $fkComponents = $getJoinFromComponentsParams->{fkComponents};
+  my $fromTableFullName = $getJoinFromComponentsParams->{fromTableFullName};
+  my $toTableFullName   = $getJoinFromComponentsParams->{toTableFullName};
+  my $pkComponents      = $getJoinFromComponentsParams->{pkComponents};
+  my $fkComponents      = $getJoinFromComponentsParams->{fkComponents};
 
   # Search for our requested join (NORMAL and REVERSE style)
   for my $key (sort keys %{$fkComponents}) {
 
     # Prefer 'NORMAL' style joins if we can find them
-    if ($fkComponents->{$key}->{fromTable} eq $fromTable and $fkComponents->{$key}->{toTable} eq $toTable) {
+    if (    $fkComponents->{$key}->{fromTableFullName} eq $fromTableFullName
+        and $fkComponents->{$key}->{toTableFullName} eq $toTableFullName)
+    {
       $join      = $fkComponents->{$key};
       $direction = 'NORMAL';
       last;
-    }
+    } ## end if ($fkComponents->{$key...})
 
     # Otherwise, we'll take a 'REVERSED' join if we have to
-    elsif ($fkComponents->{$key}->{toTable} eq $fromTable and $fkComponents->{$key}->{fromTable} eq $toTable) {
+    elsif (    $fkComponents->{$key}->{toTableFullName} eq $fromTableFullName
+           and $fkComponents->{$key}->{fromTableFullName} eq $toTableFullName)
+    {
       $join      = $fkComponents->{$key};
       $direction = 'REVERSED';
       last;
-    }
+    } ## end elsif ($fkComponents->{$key...})
   } ## end for my $key (sort keys ...)
 
   if (!defined($direction)) {
-    $ibm::logger->warn("$subName could not find a join for fromTable:$fromTable toTable:$toTable");
+    $logger->warn(
+            "$subName could not find a join for fromTableFullName:$fromTableFullName toTableFullName:$toTableFullName");
   }
 
   return {join => $join, direction => $direction};
@@ -810,6 +1213,18 @@ sub getUniqArray {
 
   return @unique;
 } ## end sub getUniqArray
+##--------------------------------------------------------------------------
+
+##--------------------------------------------------------------------------
+## Dedupe a given join list (array of hash refs), return only the best joins
+sub bestPickJoinList {
+  my (@joinList) = @_;
+  my %seen = ();
+  my @rankedJoinList = sort { $a->{depth} <=> $b->{depth} } @joinList;           # Order list by depth
+  my @unique         = grep { !$seen{Dumper($_->{join})}++ } @rankedJoinList;    # De-dupe based on the join list
+
+  return @unique;
+} ## end sub bestPickJoinList
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------

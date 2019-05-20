@@ -23,9 +23,10 @@ my $build = Module::Build->new(
                                   'Getopt::Long'  => '0',
                                   'Pod::Usage'    => '0',
                                   'Cwd'           => '0',
+                                  'English'       => '0',
+                                  'Graph'         => '0',
                      },
                      recommended_requires => {
-                                              'English'                         => '0',
                                               'Test::Perl::Critic'              => '0',
                                               'Test::Code::TidyAll'             => '0',
                                               'Perl::Tidy'                      => '0',

@@ -48,6 +48,7 @@ my $createTables             = '';
 my $commitThreshold          = 1000;
 my $coreFlg                  = 'Y';
 my $allowUnknownSchema       = '';
+my $inferEmptySchema         = '';
 my $testMode                 = '';
 my $verbose                  = '';
 
@@ -64,6 +65,7 @@ my $rc = GetOptions(
   'commitThreshold=i'          => \$commitThreshold,
   'coreFlg=s'                  => \$coreFlg,
   'allowUnknownSchema'         => \$allowUnknownSchema,
+  'inferEmptySchema'           => \$inferEmptySchema,
 
   't|testMode' => \$testMode,
   'v|verbose'  => \$verbose,
@@ -86,7 +88,9 @@ logScriptConfig();
 my $inputFileContents = JoinHero::openAndLoadFile($inputFilepath);
 
 # Parse DDL Source file into usable components
-my ($pk, $fk) = JoinHero::getKeyComponents($inputFileContents, \@supportedMarts);
+my ($pk, $fk) = JoinHero::getKeyComponents($inputFileContents, \@supportedMarts, $inferEmptySchema);
+
+$JoinHero::logger->info("Input file analyzed, proceeding to join SQL generation.");
 
 # Use our component list to construct some oracle merge statements
 my $outputFileContents = JoinHero::getOutputSQL(
@@ -102,6 +106,7 @@ my $outputFileContents = JoinHero::getOutputSQL(
                                                  supportedTypes           => \@supportedTypes,
                                                  supportedMarts           => \@supportedMarts,
                                                  allowUnknownSchema       => $allowUnknownSchema,
+                                                 inferEmptySchema         => $inferEmptySchema,
                                                  createTables             => $createTables
                                                 }
 );
@@ -174,6 +179,9 @@ sub logScriptConfig {
   $allowUnknownSchema
     ? $JoinHero::logger->info("  allowUnknownSchema:      [Enabled]")
     : $JoinHero::logger->info("  allowUnknownSchema:      [Disabled]");
+  $inferEmptySchema
+    ? $JoinHero::logger->info("  inferEmptySchema:        [Enabled]")
+    : $JoinHero::logger->info("  inferEmptySchema:        [Disabled]");
   $updateExisting
     ? $JoinHero::logger->info("  updateExisting:          [Enabled]")
     : $JoinHero::logger->info("  updateExisting:          [Disabled]");
@@ -222,9 +230,29 @@ join-hero
  Options:
   'i|file|inputFilepath=s'       DDL File input file with key info [required]
   'o|out|outputFilepath=s'       Output filepath for metadata sql [required]
-  'types=s'                      Comma delimited list in the form app[:direction]. Will generate one
-                                  set of metadata per app. If direction is 'REVERSED', 'from' and 'to'
-                                  direction is flipped. Defaults to 'SAMPLE'.
+  'types=s'                      Comma delimited list in the form app[:transform][,app2[:transform2]].
+
+                                  Will generate one set of metadata per app. Defaults to 'SAMPLE' and 'NORMAL' / no transform.
+
+                                  If transform is 'REVERSED', 'from' and 'to' join direction is flipped.
+
+                                  The SNOWFLAKE and STAR transforms will build metadata around a targeted center 'FACT_TABLE'.
+                                    If the FACT_TABLE has a defined schema, the schema should be included in the transform
+                                    e.g. --types 'JJJ_Model_Reader:STAR->JJJ.STORES'. The snowflake/star transform arguments
+                                    can be specified using either the arrow '->' or the at sign '@'.
+                                    E.g. DEMO:STAR->JJJ.STORES and DEMO:STAR@JJJ.STORES are synonymous.
+
+                                  If transform is 'SNOWFLAKE->FACT_TABLE[->MAX_PATH_LENGTH]' metadata for a snowflake schema
+                                    centered around the table 'FACT_TABLE' is generated. Optional MAX_PATH_LENGTH integer which
+                                    will stop adding joins on fact table children after reaching a path length cap.
+                                    Default MAX_PATH_LENGTH is 5.
+                                    See https://en.wikipedia.org/wiki/Snowflake_schema
+
+                                  If transform is 'STAR->FACT_TABLE' metadata for a star schema centered around
+                                    the table 'FACT_TABLE' is generated. A star is a special case of a snowflake
+                                    with a path length set to 1.
+                                    See https://en.wikipedia.org/wiki/Star_schema
+
   'marts|martPrefixes=s'         Comma delimited list of prefixes for schema derivation [optional]
   'u|updateExisting'             Update existing metadata [optional]
   'd|deleteExisting'             Delete existing metadata [optional]
@@ -234,6 +262,8 @@ join-hero
   'commitThreshold=i'            Statements to execute before issuing a commit. Defaults to 1000 [optional]
   'coreFlg=s'                    Set metadata as 'Core'. Defaults to 'Y' [optional]
   'allowUnknownSchema'           Create metadata for entities where the schema could not be determined
+  'inferEmptySchema'             If one entity in a pair had a schema detected but not the other, use the populated
+                                  schema to set the missing.
   't|testMode'                   Skip call to create output file(s) but print all of the other information.
   'v|verbose'                    Print more verbose output.
 

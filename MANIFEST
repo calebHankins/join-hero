@@ -17,5 +17,6 @@ t/00-load.t
 t/01-logger.t
 t/02-helpers.t
 t/10-parsing.t
+t/11-graph.t
 t/lint.t
 t/style.t
