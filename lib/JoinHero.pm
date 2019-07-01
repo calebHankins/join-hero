@@ -270,7 +270,7 @@ sub getGraphJoinSQL {
   my $commitThreshold = $getGraphJoinSQLParams->{commitThreshold};
   $commitThreshold //= 1000;    # Default if not supplied
   my $uncommittedTransactions = $getGraphJoinSQLParams->{uncommittedTransactions};
-  $uncommittedTransactions //= 0;    # Default if not
+  $uncommittedTransactions //= 0;    # Default if not supplied
 
   # Alias parms for ease of use
   my @types = @{$getGraphJoinSQLParams->{graphTypes}};
