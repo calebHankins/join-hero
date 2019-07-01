@@ -5,3 +5,4 @@ COPY . /usr/src/join-hero
 WORKDIR /usr/src/join-hero
 RUN cpanm --verbose .
 ENTRYPOINT [ "join-hero" ]
+LABEL name=join-hero maintainer="Caleb Hankins <caleb.hankins@acxiom.com>"

@@ -13,33 +13,34 @@ Transform DDL that describes keys (foreign, primary and unique) into join metada
 
 ----
 
-- [JOIN-HERO](#join-hero)
-  - [Installation](#installation)
-    - [Docker](#docker)
-      - [Build](#build)
-      - [Run](#run)
-    - [Native](#native)
-      - [Note for Windows Users](#note-for-windows-users)
-      - [Install using cpanm](#install-using-cpanm)
-        - [Using git repository directly](#using-git-repository-directly)
-          - [Github](#github)
-          - [Generic Repository](#generic-repository)
-        - [Using local files](#using-local-files)
-        - [Installing cpanm (App::cpanminus)](#installing-cpanm-appcpanminus)
-      - [Install using cpan](#install-using-cpan)
-      - [Install using Module::Build](#install-using-modulebuild)
-      - [Install using Make](#install-using-make)
-      - [Manual Dependency Install](#manual-dependency-install)
-        - [Example Commands To Install Log Log4perl On Various Platforms](#example-commands-to-install-log-log4perl-on-various-platforms)
-      - [Troubleshooting](#troubleshooting)
-    - [Run Without Installing](#run-without-installing)
-  - [Usage](#usage)
-    - [Generating Metadata SQL Commands](#generating-metadata-sql-commands)
-  - [Running SQL Commands](#running-sql-commands)
-  - [Sample Models](#sample-models)
-  - [Exporting DDL from the Datamodel](#exporting-ddl-from-the-datamodel)
-    - [Automated Export](#automated-export)
-    - [Manual Export](#manual-export)
+- [JOIN-HERO](#JOIN-HERO)
+  - [Installation](#Installation)
+    - [Docker](#Docker)
+      - [Build](#Build)
+      - [Run](#Run)
+    - [Native](#Native)
+      - [Note for Windows Users](#Note-for-Windows-Users)
+      - [Install using cpanm](#Install-using-cpanm)
+        - [Using git repository directly](#Using-git-repository-directly)
+          - [Github](#Github)
+          - [Generic Repository](#Generic-Repository)
+        - [Using local files](#Using-local-files)
+        - [Installing cpanm (App::cpanminus)](#Installing-cpanm-Appcpanminus)
+      - [Install using cpan](#Install-using-cpan)
+      - [Install using Module::Build](#Install-using-ModuleBuild)
+      - [Install using Make](#Install-using-Make)
+      - [Manual Dependency Install](#Manual-Dependency-Install)
+        - [Example Commands To Install Log Log4perl On Various Platforms](#Example-Commands-To-Install-Log-Log4perl-On-Various-Platforms)
+      - [Troubleshooting](#Troubleshooting)
+    - [Run Without Installing](#Run-Without-Installing)
+  - [Usage](#Usage)
+    - [Generating Metadata SQL Commands](#Generating-Metadata-SQL-Commands)
+  - [Running SQL Commands](#Running-SQL-Commands)
+  - [Sample Models](#Sample-Models)
+  - [Exporting DDL from the Datamodel](#Exporting-DDL-from-the-Datamodel)
+    - [Automated Export](#Automated-Export)
+    - [Manual Export](#Manual-Export)
+  - [Contributing](#Contributing)
 
 
 ## Installation
@@ -242,3 +243,6 @@ Sanity check the generated SQL code, insure that it has all the required DDL sta
 
 Save the generated DDL file somewhere that the join-hero utility can read it.
 
+
+## Contributing
+If you are interested in contributing to the project, please check out our [Contributor's Guide](CONTRIBUTING.md).
