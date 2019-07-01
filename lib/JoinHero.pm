@@ -1265,8 +1265,9 @@ sub signOff {
   my $errorCount   = $logger->get_count("ERROR") + $inErrorCount;    # Combine logger's count and the supplied count
   my $warningCount = $logger->get_count("WARN") + $inWarnCount;      # Combine logger's count and the supplied count
 
-  if (!$statusCode && $errorCount)  { $statusCode += $errorCount; }  # Set non-zero rc if we detected logger errors
-  if ($statusCode  && !$errorCount) { $errorCount++; }               # Increment error counter if logger didn't catch it
+  if (!$statusCode && $errorCount) { $statusCode += $errorCount; }   # Set non-zero rc if we detected logger errors
+
+  if ($statusCode && !$errorCount) { $errorCount++; }                # Increment error counter if logger didn't catch it
 
   # If we got a value >255, assume we were passed a wait call exit status and right shift by 8 to get the return code
   my $statusCodeSmall = $statusCode;
