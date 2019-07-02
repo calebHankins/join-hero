@@ -29,7 +29,7 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';    # Suppress smar
 
 ##--------------------------------------------------------------------------
 # Version info
-our $VERSION = '0.2.6';
+our $VERSION = '0.2.7';
 ##--------------------------------------------------------------------------
 
 ##--------------------------------------------------------------------------
@@ -1208,7 +1208,9 @@ sub getFilepathParts {
 # to see if we've seen the element before.  curtesy of perlfaq4 + Dumper for serialization
 sub getUniqArray {
   my (@array) = @_;
+
   my %seen = ();
+
   my @unique = grep { !$seen{Dumper($_)}++ } @array;
 
   return @unique;
@@ -1264,6 +1266,7 @@ sub signOff {
   my $warningCount = $logger->get_count("WARN") + $inWarnCount;      # Combine logger's count and the supplied count
 
   if (!$statusCode && $errorCount) { $statusCode += $errorCount; }   # Set non-zero rc if we detected logger errors
+
   if ($statusCode && !$errorCount) { $errorCount++; }                # Increment error counter if logger didn't catch it
 
   # If we got a value >255, assume we were passed a wait call exit status and right shift by 8 to get the return code
